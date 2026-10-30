@@ -1,7 +1,12 @@
 name: Build Windows exe
 on:
   push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: windows-latest
@@ -27,3 +32,9 @@ jobs:
         with:
           name: ArturiaMidiMacros
           path: dist/ArturiaMidiMacros.exe
+      - name: Attach exe to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/ArturiaMidiMacros.exe --clobber || gh release create "${GITHUB_REF_NAME}" dist/ArturiaMidiMacros.exe --title "${GITHUB_REF_NAME}" --generate-notes
