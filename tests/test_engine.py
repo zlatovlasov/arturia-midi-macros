@@ -45,8 +45,16 @@ def test_faders_abs():
     e.process(mido.Message("control_change",channel=0,control=85,value=127)); assert b.apps["chrome.exe"]==1
 
 def test_channel_aware():
+    # явный канал в триггере по-прежнему соблюдается
+    b,e,_,cfg=setup()
+    cfg["global"].append({"id":"g","trigger":{"type":"cc","channel":2,"number":40},"mode":"absolute","action":{"type":"master_volume","params":{}}})
+    e.process(mido.Message("control_change",channel=5,control=40,value=127)); assert b.vol==0.5
+    e.process(mido.Message("control_change",channel=2,control=40,value=127)); assert b.vol==1
+
+def test_device_controls_any_channel():
+    # ручки/фейдеры MiniLab ловятся на любом канале (у пользовательских программ MiniLab свой канал)
     b,e,_,_=setup()
-    e.process(mido.Message("control_change",channel=5,control=82,value=127)); assert b.vol==0.5
+    e.process(mido.Message("control_change",channel=5,control=82,value=127)); assert b.vol==1
 
 def test_relative_encoder():
     b,e,_,_=setup()

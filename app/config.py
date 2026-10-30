@@ -13,18 +13,39 @@ def config_path():
     return os.path.join(config_dir(), "config.json")
 
 def default_config():
-    return {"version": 1, "inputs": [], "autostart": True, "start_minimized": True,
+    return {"version": 2, "inputs": [], "autostart": True, "start_minimized": True,
             "active_profile": "MiniLab 3", "global": [],
             "profiles": {"MiniLab 3": minilab3_profile(), "Пустой": []},
-            "asked_minilab": False, "hotkey": "ctrl+alt+m", "auto_off_fl": False, "start_off": False, "theme": "dark"}
+            "asked_minilab": False, "hotkey": "ctrl+alt+m", "auto_off_fl": False, "start_off": False, "theme": "dark",
+            "calib": {}, "voice_pitch_enabled": False, "voice_pitch_output": "CABLE Input", "all_minilab_ports": True}
+
+DEVICE_CCS = {74, 71, 76, 77, 93, 18, 19, 16, 82, 83, 85, 17, 28, 118, 1}
+
+def migrate(cfg):
+    """v1 -> v2: ручки/фейдеры/энкодер/полосы MiniLab ловим на любом канале; Pitch -> питч голоса."""
+    if cfg.get("version", 1) >= 2:
+        return cfg
+    for lst in list(cfg.get("profiles", {}).values()) + [cfg.get("global", [])]:
+        for m in lst:
+            t = m.get("trigger", {})
+            if (t.get("type") == "cc" and t.get("channel") == 0 and t.get("number") in DEVICE_CCS) or (t.get("type") == "pitch" and t.get("channel") == 0):
+                t["channel"] = None
+    ml = cfg.get("profiles", {}).get("MiniLab 3")
+    if ml is not None and not any(m.get("trigger", {}).get("type") == "pitch" for m in ml):
+        ml.append({"id": new_id(), "name": "Полоса Pitch: питч голоса", "trigger": {"type": "pitch", "channel": None, "number": 0},
+                   "mode": "absolute", "action": {"type": "voice_pitch", "params": {"range": 12}}})
+    cfg["version"] = 2
+    return cfg
 
 def new_id():
     return uuid.uuid4().hex[:8]
 
 def fix(cfg):
     d = default_config()
+    cfg.setdefault("version", 1)
     for k, v in d.items():
         cfg.setdefault(k, v)
+    migrate(cfg)
     if not cfg["profiles"]:
         cfg["profiles"] = {"Пустой": []}
     if cfg["active_profile"] not in cfg["profiles"]:

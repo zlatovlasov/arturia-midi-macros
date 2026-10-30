@@ -27,7 +27,7 @@ if exist .venv rmdir /s /q .venv
 call .venv\Scripts\activate.bat
 python -m pip install --upgrade pip
 pip install -r requirements.txt pyinstaller pytest || (pause & exit /b 1)
-python -m pytest -q tests\test_engine.py || (echo Тесты упали & pause & exit /b 1)
+python -m pytest -q tests || (echo Тесты упали & pause & exit /b 1)
 pyinstaller --noconfirm --onefile --collect-all vosk --hidden-import sounddevice --windowed --name ArturiaMidiMacros --paths app ^
   --hidden-import mido.backends.rtmidi --hidden-import rtmidi --collect-submodules pycaw --collect-submodules comtypes ^
   app\main.py || (pause & exit /b 1)

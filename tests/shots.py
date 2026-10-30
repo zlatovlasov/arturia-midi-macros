@@ -43,3 +43,25 @@ w.ctl.set_enabled(False); shot("light-off")
 w.cfg["theme"]="dark"; w.apply_theme(); shot("dark-off")
 w.ctl.set_enabled(True)
 d=gui.SettingsDialog(w); d.show(); app.processEvents(); d.grab().save(f"{out}/settings.png")
+
+# ---- v4: монитор, свежая схема (нетронутые серые), калибровка, выбор действия
+from picker import ActionPicker
+def v4(prefix):
+    w.dev.seen.clear(); w.dev.lit.clear(); w.monitor.lines.clear()
+    for port,m in (("Minilab3 MIDI",mido.Message("note_on",channel=9,note=36,velocity=100)),
+                   ("MIDIIN2 (Minilab3 MIDI)",mido.Message("control_change",channel=0,control=74,value=88)),
+                   ("MIDIIN2 (Minilab3 MIDI)",mido.Message("control_change",channel=0,control=82,value=101)),
+                   ("Minilab3 MIDI",mido.Message("pitchwheel",channel=0,pitch=2400))):
+        w.on_midi_ui(port,m)
+    app.processEvents(); shot(f"{prefix}-monitor")
+    w.open_calibration(); cal=w.calib
+    for n in (102,103,104): cal.feed(norm({"type":"control_change","channel":0,"control":n,"value":70}))
+    app.processEvents(); shot(f"{prefix}-calibration"); cal.grab().save(f"{out}/{prefix}-calibration-dialog.png"); cal.reject(); app.processEvents()
+    w.dev.select_id("pad6")
+    d=ActionPicker(w,"open_links"); d.show(); d.resize(700,580); app.processEvents(); d.grab().save(f"{out}/{prefix}-picker-tiles.png")
+    d.open_tile("Звук"); app.processEvents(); d.grab().save(f"{out}/{prefix}-picker-list.png")
+    d.q.setText("ссыл"); app.processEvents(); d.grab().save(f"{out}/{prefix}-picker-search.png"); d.close()
+from engine import norm_msg as norm
+w.cfg["theme"]="dark"; w.apply_theme(); v4("dark")
+w.cfg["theme"]="light"; w.apply_theme(); v4("light")
+w.cfg["theme"]="dark"; w.apply_theme()

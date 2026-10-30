@@ -255,6 +255,11 @@ class Runner:
         self.on_profile = on_profile or (lambda name, step: None)
         self.notify = notify or (lambda text: None)
         self._out_idx = 0
+        self.pitch = None                 # VoicePitch, создаётся лениво
+        self.pitch_enabled = False        # включается в настройках
+        self.pitch_output = "CABLE Input"
+        self.on_need_vbcable = lambda: None
+        self._pitch_warned = False
 
     def __call__(self, action, ctx):
         try:
@@ -274,6 +279,7 @@ class Runner:
     def run(self, a, ctx):
         t, p, b, k = a.get("type", "none"), a.get("params", {}), self.b, ctx["kind"]
         if t == "voice": return self.run_voice(p.get("engine", "windows"), k)
+        if t == "voice_pitch": return self.run_pitch(p, ctx)
         press = k in ("trigger", "on")
         if t == "none": return
         if t == "master_volume": return self._level(b.get_vol, b.set_vol, ctx, int(p.get("step", 5)))
@@ -365,6 +371,26 @@ class Runner:
         if k in ("on", "trigger"): self.voice.start()
         elif k == "off": self.voice.stop_and_paste()
 
+    def run_pitch(self, p, ctx):
+        """Полоса Pitch: центр — обычный голос, вверх/вниз — до ±range полутонов."""
+        if ctx["kind"] != "abs": return
+        if not self.pitch_enabled:
+            if not self._pitch_warned:
+                self._pitch_warned = True; self.notify("Питч голоса выключен — включите его в Настройках")
+            return
+        if self.pitch is None:
+            from voice_fx import VoicePitch
+            self.pitch = VoicePitch(notify=self.notify, output=self.pitch_output)
+        if not self.pitch.stream:
+            try: self.pitch.start()
+            except LookupError:
+                self.pitch_enabled = False; self.on_need_vbcable(); return
+        st = self.pitch.set(ctx["value"], int(p.get("range", 12)))
+        self._set_state(pitch=st)
+
+    def stop_pitch(self):
+        if self.pitch: self.pitch.stop()
+
     def run_macro(self, src):
         self.run_steps(parse_macro(src))
 
@@ -399,3 +425,4 @@ ACTIONS["scene"] = ("Сцена (набор шагов)", [("steps", "Шаги �
      {"do": "wait", "arg": "800"}, {"do": "links", "arg": "spb-4.ru vlaslovo.ru"}], None)], "Сцены")
 ACTIONS["voice"] = ("Голос в текст (держать пэд)", [("engine", "Распознавание", "choice", "windows", ["windows", "vosk"])], "Голос")
 ACTIONS["macros_off"] = ("Выключить макросы (отдать порт FL Studio)", [], "Профили")
+ACTIONS["voice_pitch"] = ("Питч голоса (полоса Pitch)", [("range", "Диапазон, ± полутонов", "int", 12, None)], "Голос")

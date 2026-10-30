@@ -25,11 +25,20 @@ class MacroController:
             self.state = {"mode": mode, "open": [], "errors": []}
         else:
             avail = self.list_inputs()
-            want = [n for n in self.cfg.get("inputs", []) if n in avail]
+            chosen = [n for n in self.cfg.get("inputs", []) if n in avail]
+            extra = []
+            if self.cfg.get("all_minilab_ports", True):
+                # MiniLab 3 отдаёт несколько входов («Minilab3 MIDI», «MIDIIN2 (Minilab3 MIDI)», DAW-порт…):
+                # ручки могут идти не в тот, что выбран, поэтому слушаем все.
+                from presets import maybe_minilab_port
+                extra = [n for n in avail if maybe_minilab_port(n) and n not in chosen]
+            want = chosen + extra
             raw = self.hub.open(want)
             failed = {n for n in want if any(str(e).startswith(n + ":") for e in raw)}
-            errors = [f"«{n}»: {BUSY}" for n in want if n in failed]
+            errors = [f"«{n}»: {BUSY}" for n in chosen if n in failed]
             opened = [n for n in want if n not in failed]
+            if not chosen and extra and not opened:
+                errors = [f"«{n}»: {BUSY}" for n in extra]
             if not want:
                 errors.append("MIDI-вход не выбран или клавиатура не подключена")
             self.state = {"mode": "on" if opened else "error", "open": opened, "errors": errors}

@@ -8,7 +8,17 @@ from presets import KNOBS, FADERS, PAD_CH, CH1
 
 W, H = 940, 440
 
-def build_controls():
+def build_controls(calib=None):
+    c = _build()
+    for x in c:   # ручки/фейдеры/энкодер/полосы: канал любой; калибровка подменяет CC
+        if x["kind"] in ("strip", "encoder", "button", "knob", "fader"):
+            x["default_trig"] = dict(x["trig"], channel=None)
+            x["trig"] = dict((calib or {}).get(x["id"]) or x["default_trig"], channel=None)
+    return c
+
+CONTINUOUS = ("strip", "encoder", "knob", "fader")
+
+def _build():
     c = []
     c.append({"id": "pitch", "label": "Полоса Pitch", "kind": "strip", "trig": {"type": "pitch", "channel": CH1, "number": 0}, "rect": QRectF(34, 70, 26, 170)})
     c.append({"id": "mod", "label": "Полоса Mod", "kind": "strip", "trig": {"type": "cc", "channel": CH1, "number": 1}, "rect": QRectF(72, 70, 26, 170)})
@@ -44,6 +54,7 @@ class DeviceView(QWidget):
     def __init__(self):
         super().__init__()
         self.controls = build_controls(); self.bank = 0; self.sel = None
+        self.seen = set(); self.calib_target = None   # что уже шевелили; что подсвечивает мастер калибровки
         self.lit, self.values, self.mapped, self.held, self.pad_colors = {}, {}, set(), set(), {}
         self.screen_text = ""
         self.setMinimumSize(620, 300); self.setMouseTracking(True); self.hover = None
@@ -53,6 +64,14 @@ class DeviceView(QWidget):
         if c["kind"] == "pad":
             return {"type": "note", "channel": PAD_CH, "number": 36 + self.bank * 8 + c["pad"]}
         return c["trig"]
+
+    def set_calib(self, calib):
+        sel = self.sel["id"] if self.sel else None
+        self.controls = build_controls(calib)
+        self.sel = next((c for c in self.controls if c["id"] == sel), None); self.update()
+
+    def defaults(self):
+        return {c["id"]: c["default_trig"] for c in self.controls if "default_trig" in c}
 
     def label(self, c):
         return f"Пэд {'AB'[self.bank]}{c['pad']+1}" if c["kind"] == "pad" else c["label"]
@@ -65,7 +84,7 @@ class DeviceView(QWidget):
     def find(self, ev):
         for c in self.controls:
             t = self.trig(c)
-            if t["type"] == ev["type"] and (t["type"] == "pitch" or t["number"] == ev["number"]) and t["channel"] == ev["channel"]:
+            if t["type"] == ev["type"] and (t["type"] == "pitch" or t["number"] == ev["number"]) and t["channel"] in (None, ev["channel"]):
                 return c
         if ev["type"] == "note" and ev["channel"] == PAD_CH and 36 <= ev["number"] <= 51:
             b = (ev["number"] - 36) // 8
@@ -76,7 +95,7 @@ class DeviceView(QWidget):
     def on_event(self, ev):
         c = self.find(ev)
         if not c: return None
-        self.lit[c["id"]] = time.monotonic()
+        self.lit[c["id"]] = time.monotonic(); self.seen.add(c["id"])
         if ev["type"] == "note":
             (self.held.add if ev["on"] else self.held.discard)(c["id"])
             self.screen_text = f"{self.label(c)}\nvel {ev['value']}" if ev["on"] else self.screen_text
@@ -87,7 +106,7 @@ class DeviceView(QWidget):
         self.update(); return c
 
     def _fade(self):
-        if self.lit: self.update()
+        if self.lit or self.calib_target: self.update()
         now = time.monotonic()
         for k in [k for k, t in self.lit.items() if now - t > 0.6]: del self.lit[k]
 
@@ -151,6 +170,16 @@ class DeviceView(QWidget):
         p.setPen(pen); return mapped
 
     def _draw(self, p, c):
+        grey = c["kind"] in CONTINUOUS and c["id"] not in self.seen and getattr(self, "grey_untouched", True)
+        if grey: p.setOpacity(0.38)
+        self._draw1(p, c)
+        p.setOpacity(1.0)
+        if self.calib_target == c["id"]:
+            ph = (time.monotonic() * 2) % 1.0
+            p.setBrush(Qt.NoBrush); p.setPen(QPen(col("#ff8a2a"), 3 + 2 * ph))
+            p.drawRoundedRect(c["rect"].adjusted(-8 - 4 * ph, -8 - 4 * ph, 8 + 4 * ph, 8 + 4 * ph), 12, 12)
+
+    def _draw1(self, p, c):
         r = c["rect"]; k = c["kind"]
         if c["id"] in self.held:
             r = r.adjusted(2, 3, -2, 1) if k in ("pad", "white", "black") else r

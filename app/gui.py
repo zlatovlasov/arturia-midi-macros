@@ -13,6 +13,9 @@ from macro import SCENE_STEPS
 from midi_io import MidiHub, Worker, list_inputs
 from controller import MacroController, fl_is_running
 from device import DeviceView
+from picker import ActionPicker, ActionButton
+from calib import Calibration, ORDER as CALIB_ORDER
+import calib as CAL
 import theme
 from theme import col
 
@@ -41,6 +44,16 @@ QCheckBox::indicator { width: 18px; height: 18px; }
 QMenu { background: #1c1b19; border: 1px solid #34312d; padding: 6px; }
 QMenu::item { padding: 6px 18px; border-radius: 6px; } QMenu::item:selected { background: #3a332b; }
 QScrollArea { border: none; background: transparent; }
+QToolButton#tile { background: #1c1b19; border: 1px solid #34312d; border-radius: 16px; padding: 14px 8px; font-size: 15px; font-weight: 600; }
+QToolButton#tile:hover { background: #2a2825; border-color: #ff8a2a; }
+QToolButton#tile[current="true"] { border: 2px solid #ff8a2a; }
+QPushButton#actbtn { text-align: left; padding: 9px 12px; background: #111110; border: 1px solid #34312d; font-weight: 600; }
+QPushButton#actbtn:hover { border-color: #ff8a2a; }
+QListWidget#actions::item { padding: 8px 10px; margin: 2px 0; }
+QListWidget#actions::item:hover { background: #24221f; }
+QFrame#monitor { background: #111110; border: 1px solid #2c2a27; border-radius: 10px; }
+QLabel#mono { font-family: 'Cascadia Mono', 'Consolas', 'DejaVu Sans Mono', monospace; font-size: 12px; color: #d8d2c8; }
+QLabel#calbig { font-size: 22px; font-weight: 700; color: #ff8a2a; }
 QToolButton#mini { padding: 0; min-width: 26px; min-height: 26px; font-size: 13px; }
 """
 
@@ -199,6 +212,7 @@ class Bus(QObject):
     fl = Signal(bool)
     leds = Signal(dict)
     state = Signal(dict)
+    vbcable = Signal()
 
 
 class Editor(QFrame):
@@ -222,13 +236,7 @@ class Editor(QFrame):
         L.addLayout(row)
         self.form_w = QWidget(); f = QFormLayout(self.form_w); f.setContentsMargins(0, 6, 0, 0); f.setVerticalSpacing(10); self.f = f
         self.name = QLineEdit(); f.addRow("Название", self.name)
-        self.act = QComboBox(); self.act.setIconSize(QSize(18, 18)); self.act.setMaxVisibleItems(24)
-        last = None
-        for k, (ru, _, cat) in sorted(ACTIONS.items(), key=lambda kv: list(CAT_COL).index(kv[1][2])):
-            if cat != last and k != "none":
-                self.act.addItem(f"— {cat} —"); it = self.act.model().item(self.act.count() - 1); it.setEnabled(False); last = cat
-            self.act.addItem(cat_icon(cat), ru, k)
-        self.act.currentIndexChanged.connect(lambda _: self._act_changed()); f.addRow("Действие", self.act)
+        self.act = ActionButton(); self.act.changed.connect(lambda _: self._act_changed()); f.addRow("Действие", self.act)
         self.mode = QComboBox(); f.addRow("Режим", self.mode); self.mode.currentIndexChanged.connect(lambda _: self._upd_long())
         vel = QHBoxLayout(); self.vmin = QSpinBox(); self.vmax = QSpinBox()
         for s in (self.vmin, self.vmax): s.setRange(1, 127); vel.addWidget(s)
@@ -253,7 +261,7 @@ class Editor(QFrame):
         out = []
         for m in self.main.cur_list():
             t = m.get("trigger", {})
-            if t.get("type") == trig["type"] and (trig["type"] == "pitch" or t.get("number") == trig["number"]) and t.get("channel") in (None, trig["channel"]):
+            if t.get("type") == trig["type"] and (trig["type"] == "pitch" or t.get("number") == trig["number"]) and (trig["channel"] is None or t.get("channel") in (None, trig["channel"])):
                 out.append(m)
         return out
 
@@ -297,7 +305,7 @@ class Editor(QFrame):
         note = t == "note"
         for w in (self.vmin, self.vmax, self.vel_lbl): w.setVisible(note)
         self._upd_long()
-        self.act.blockSignals(True); self.act.setCurrentIndex(max(0, self.act.findData(m["action"].get("type", "none")))); self.act.blockSignals(False)
+        self.act.set(m["action"].get("type", "none"))
         self.build_params()
 
     def _act_changed(self):
@@ -335,6 +343,7 @@ class Editor(QFrame):
                  "open_links": "Одно нажатие открывает все ссылки по очереди. https:// добавится сам. Пауза нужна, чтобы браузер не путал порядок вкладок.",
                  "scene": "Сцена выполняет шаги сверху вниз одним нажатием: открыть программы и ссылки, выставить громкость, микрофон, паузы.",
                  "voice": "Режим «Удержание»: держите пэд и говорите, отпустите — текст вставится в активное окно. windows — встроенный ввод Win+H (ничего ставить не нужно, нужен интернет); vosk — офлайн, при первом использовании скачается русская модель ~45 МБ.",
+                 "voice_pitch": "Центр полосы — обычный голос, вверх — выше, вниз — ниже. Звук идёт в виртуальный микрофон VB-Cable: в Discord/OBS/Telegram выберите микрофон «CABLE Output». Включается в Настройках.",
                  "macros_off": "Закрывает MIDI-порт, чтобы клавиатуру мог взять FL Studio. Включить обратно — Ctrl+Alt+M или кнопкой в окне/трее."}
         self.hint.setText(hints.get(k, ""))
 
@@ -382,7 +391,9 @@ class SettingsDialog(QDialog):
         self.autostart = QCheckBox("Запускать вместе с Windows"); self.autostart.setChecked(cfg.get("autostart", True))
         self.start_off = QCheckBox("Стартовать в состоянии ВЫКЛ (порт свободен)"); self.start_off.setChecked(cfg.get("start_off", False))
         self.fl = QCheckBox("Автоматически выключать, пока открыт FL Studio"); self.fl.setChecked(cfg.get("auto_off_fl", False))
-        for w in (self.autostart, self.start_off, self.fl): L.addWidget(w)
+        self.allports = QCheckBox("Слушать все входы MiniLab (рекомендуется: ручки бывают на другом порту)"); self.allports.setChecked(cfg.get("all_minilab_ports", True))
+        self.pitch = QCheckBox("Питч голоса на полосе Pitch (виртуальный микрофон VB-Cable)"); self.pitch.setChecked(cfg.get("voice_pitch_enabled", False))
+        for w in (self.autostart, self.start_off, self.fl, self.allports, self.pitch): L.addWidget(w)
         f = QFormLayout(); self.hk = QLineEdit(cfg.get("hotkey", "ctrl+alt+m")); f.addRow("Горячая клавиша ВКЛ/ВЫКЛ", self.hk)
         self.theme = QComboBox(); self.theme.addItem("Тёмная (оранжевый акцент)", "dark"); self.theme.addItem("Светлая (фиолетовый акцент)", "light")
         self.theme.setCurrentIndex(max(0, self.theme.findData(cfg.get("theme", "dark")))); f.addRow("Тема", self.theme)
@@ -403,12 +414,93 @@ class SettingsDialog(QDialog):
         cfg["inputs"] = sel; cfg["start_off"] = self.start_off.isChecked(); cfg["auto_off_fl"] = self.fl.isChecked()
         cfg["hotkey"] = self.hk.text().strip().lower() or "ctrl+alt+m"
         cfg["led_output"] = self.led.currentData()
+        cfg["all_minilab_ports"] = self.allports.isChecked()
+        if cfg.get("voice_pitch_enabled", False) != self.pitch.isChecked():
+            cfg["voice_pitch_enabled"] = self.pitch.isChecked(); self.main.apply_pitch(check=True)
         if cfg.get("theme", "dark") != self.theme.currentData():
             cfg["theme"] = self.theme.currentData(); self.main.apply_theme()
         if cfg.get("autostart") != self.autostart.isChecked():
             cfg["autostart"] = self.autostart.isChecked()
             try: C.set_autostart(cfg["autostart"])
             except Exception as e: self.main.notify(f"Автозапуск: {e}")
+
+
+class MidiMonitor(QFrame):
+    """Полоска «что приходит с клавиатуры»: последние сырые сообщения (порт, тип, канал, номер, значение)."""
+    def __init__(self, rows=4):
+        super().__init__(); self.setObjectName("monitor"); self.rows = rows; self.lines = []
+        h = QHBoxLayout(self); h.setContentsMargins(12, 6, 12, 6); h.setSpacing(12)
+        t = QLabel("MIDI-монитор"); t.setObjectName("muted"); t.setFixedWidth(104); t.setAlignment(Qt.AlignTop); h.addWidget(t)
+        self.txt = QLabel("Пока тихо — покрутите ручку или нажмите пэд"); self.txt.setObjectName("mono"); self.txt.setTextFormat(Qt.PlainText)
+        self.txt.setMinimumHeight(rows * 17); h.addWidget(self.txt, 1)
+
+    @staticmethod
+    def fmt(port, msg):
+        ev = norm_msg(msg)
+        port = (port or "")[:26]
+        if ev is None:
+            return f"{port:<26}  {getattr(msg, 'type', '?')}"
+        kind = {"note": "Note " + ("on " if ev.get("on") else "off"), "cc": "CC", "pitch": "Pitch", "program": "Prog"}[ev["type"]]
+        num = "" if ev["type"] == "pitch" else f"#{ev['number']:<3}"
+        return f"{port:<26}  {kind:<9} кан.{ev['channel'] + 1:<2}  {num:<5} = {ev['value']}"
+
+    def add(self, port, msg):
+        if getattr(msg, "type", "") in ("clock", "active_sensing"): return
+        self.lines.insert(0, self.fmt(port, msg)); del self.lines[self.rows:]
+        self.txt.setText("\n".join(self.lines))
+
+
+class CalibrationDialog(QDialog):
+    """Мастер «Калибровка ручек»: по очереди подсвечивает контрол на схеме, ждёт движения, запоминает CC/канал."""
+    def __init__(self, main):
+        super().__init__(main); self.main = main; self.cal = Calibration(CALIB_ORDER)
+        self.setWindowTitle("Калибровка ручек"); self.setMinimumSize(520, 380); self.setModal(False)
+        L = QVBoxLayout(self); L.setContentsMargins(22, 20, 22, 18); L.setSpacing(10)
+        h = QLabel("Калибровка ручек"); h.setObjectName("h1"); L.addWidget(h)
+        info = QLabel("Покрутите контрол, который подсвечен на схеме. Программа запомнит, что реально шлёт ваша MiniLab, "
+                      "и перенесёт на него все назначения. Если какого-то контрола нет — «Пропустить».")
+        info.setWordWrap(True); info.setObjectName("muted"); info.setMinimumHeight(64); L.addWidget(info)
+        self.step = QLabel(""); self.step.setObjectName("muted"); L.addWidget(self.step)
+        self.big = QLabel(""); self.big.setObjectName("calbig"); L.addWidget(self.big)
+        self.got = QLabel(""); self.got.setObjectName("mono"); self.got.setWordWrap(True); L.addWidget(self.got)
+        b = QHBoxLayout()
+        self.backb = QPushButton("← Назад"); self.backb.clicked.connect(self.back); b.addWidget(self.backb)
+        self.skipb = QPushButton("Пропустить"); self.skipb.clicked.connect(self.skip); b.addWidget(self.skipb)
+        b.addStretch(1)
+        self.cancelb = QPushButton("Отмена"); self.cancelb.clicked.connect(self.reject); b.addWidget(self.cancelb)
+        self.okb = QPushButton("Сохранить"); self.okb.setObjectName("primary"); self.okb.clicked.connect(self.finish); b.addWidget(self.okb)
+        L.addLayout(b); self.refresh()
+
+    def refresh(self):
+        cur = self.cal.current(); n = len(self.cal.order)
+        self.step.setText(f"Шаг {min(self.cal.i + 1, n)} из {n}")
+        self.big.setText(f"Двигайте: {cur[1]}" if cur else "Готово! Нажмите «Сохранить»")
+        self.main.dev.calib_target = cur[0] if cur else None
+        if cur: self.main.dev.select_id(cur[0])
+        rows = []
+        for cid, lbl, _ in self.cal.order:
+            r = self.cal.result.get(cid)
+            if r: rows.append(f"{lbl:<30} {'Pitch' if r['type'] == 'pitch' else 'CC ' + str(r['number'])} · кан. {r['channel'] + 1}")
+        self.got.setText("\n".join(rows[-6:]))
+        self.skipb.setEnabled(cur is not None); self.backb.setEnabled(self.cal.i > 0)
+        self.main.dev.update()
+
+    def feed(self, ev):
+        if self.cal.feed(ev): self.refresh(); return True
+        return False
+
+    def skip(self): self.cal.skip(); self.refresh()
+    def back(self): self.cal.back(); self.refresh()
+
+    def finish(self):
+        n = CAL.apply(self.main.cfg, self.cal.result, self.main.dev.defaults())
+        self.main.dev.set_calib(self.main.cfg.get("calib", {})); self.main.persist()
+        self.main.notify(f"Калибровка сохранена: контролов {len(self.cal.result)}, назначений перенесено {n}")
+        self.accept()
+
+    def done(self, r):
+        self.main.dev.calib_target = None; self.main.calib = None; self.main.dev.update()
+        super().done(r)
 
 
 class Main(QMainWindow):
@@ -427,6 +519,9 @@ class Main(QMainWindow):
         self.bus.midi.connect(self.on_midi_ui); self.bus.note.connect(self.notify)
         self.bus.leds.connect(lambda _: self.update_leds()); self.bus.state.connect(self.show_state); self.bus.toggle.connect(self.toggle_from_hotkey); self.bus.fl.connect(self.ctl.set_fl_running)
         self._profile_req = None
+        self.calib = None
+        self.runner.on_need_vbcable = self.bus.vbcable.emit; self.bus.vbcable.connect(self.offer_vbcable)
+        self.runner.pitch_enabled = bool(cfg.get("voice_pitch_enabled", False)); self.runner.pitch_output = cfg.get("voice_pitch_output", "CABLE Input")
 
         root = QWidget(); root.setObjectName("root"); self.setCentralWidget(root)
         L = QVBoxLayout(root); L.setContentsMargins(0, 0, 0, 0); L.setSpacing(0)
@@ -454,8 +549,10 @@ class Main(QMainWindow):
         hl = QHBoxLayout(); hh = QLabel("Ваша MiniLab 3"); hh.setObjectName("h2"); hl.addWidget(hh); hl.addStretch(1)
         self.live = QLabel("Нажимайте контролы — схема повторяет их вживую"); self.live.setObjectName("muted"); hl.addWidget(self.live)
         LL.addLayout(hl)
-        self.dev = DeviceView(); self.dev.selected.connect(self.control_selected); self.dev.on_bank = lambda: (self.refresh_mapped(), self.update_leds()); LL.addWidget(self.dev, 1)
+        cb = QPushButton("Калибровка ручек"); cb.clicked.connect(self.open_calibration); hl.addWidget(cb)
+        self.dev = DeviceView(); self.dev.set_calib(cfg.get("calib", {})); self.dev.selected.connect(self.control_selected); self.dev.on_bank = lambda: (self.refresh_mapped(), self.update_leds()); LL.addWidget(self.dev, 1)
         self.offmask = QLabel(""); self.offmask.setObjectName("muted"); self.offmask.setAlignment(Qt.AlignCenter); LL.addWidget(self.offmask)
+        self.monitor = MidiMonitor(); LL.addWidget(self.monitor)
         body.addWidget(leftw, 3)
         self.editor = Editor(self); self.editor.setMinimumWidth(470); self.editor.setMaximumWidth(560); body.addWidget(self.editor, 1)
         self.ledhint = QLabel(""); self.ledhint.setObjectName("muted"); self.ledhint.setAlignment(Qt.AlignCenter); LL.addWidget(self.ledhint)
@@ -497,7 +594,7 @@ class Main(QMainWindow):
     def closeEvent(self, e): e.ignore(); self.hide(); self.notify("Работаю в трее")
 
     def quit(self):
-        self._fl_stop = True; self.worker.running = False; self.led.close(colors_on_release=["#7f7f7f"] * 8); self.hub.close(); self.persist(); QApplication.quit()
+        self._fl_stop = True; self.worker.running = False; self.runner.stop_pitch(); self.led.close(colors_on_release=["#7f7f7f"] * 8); self.hub.close(); self.persist(); QApplication.quit()
 
     # ---------- ВКЛ/ВЫКЛ
     def show_state(self, st):
@@ -596,9 +693,41 @@ class Main(QMainWindow):
             self.add_minilab()
 
     # ---------- MIDI в интерфейсе
+    def open_calibration(self):
+        if self.calib: self.calib.raise_(); return
+        if self.ctl.state.get("mode") != "on":
+            self.notify("Включите макросы — калибровке нужен открытый MIDI-порт")
+        self.calib = CalibrationDialog(self); self.calib.show()
+
+    def apply_pitch(self, check=False):
+        on = bool(self.cfg.get("voice_pitch_enabled", False)); self.runner.pitch_enabled = on
+        if not on: self.runner.stop_pitch(); self.notify("Питч голоса выключен"); return
+        try:
+            from voice_fx import VoicePitch
+            ok = VoicePitch(output=self.cfg.get("voice_pitch_output", "CABLE Input")).available()
+        except Exception:
+            ok = False
+        if not ok and check: self.offer_vbcable()
+        elif ok: self.notify("Питч голоса включён — двигайте полосу Pitch")
+
+    def offer_vbcable(self):
+        self.cfg["voice_pitch_enabled"] = False; self.runner.pitch_enabled = False; self.persist()
+        mb = QMessageBox(self); mb.setWindowTitle("Нужен VB-Cable"); mb.setIcon(QMessageBox.Information)
+        mb.setText("Для питча голоса нужен бесплатный виртуальный микрофон VB-Cable.")
+        mb.setInformativeText("1. Откроется официальный сайт vb-audio.com — скачайте «VBCABLE_Driver_Pack».\n"
+                              "2. Распакуйте и запустите VBCABLE_Setup_x64.exe от администратора, нажмите Install, перезагрузите ПК.\n"
+                              "3. Включите питч в Настройках. В Discord/OBS/Telegram выберите микрофон «CABLE Output».")
+        go = mb.addButton("Открыть vb-audio.com", QMessageBox.AcceptRole); mb.addButton("Позже", QMessageBox.RejectRole)
+        mb.exec()
+        if mb.clickedButton() is go:
+            import webbrowser; from voice_fx import VB_URL; webbrowser.open(VB_URL)
+
     def on_midi_ui(self, port, msg):
+        self.monitor.add(port, msg)
         ev = norm_msg(msg)
         if not ev: return
+        if self.calib and ev["type"] in ("cc", "pitch"):
+            self.calib.feed(ev); self.dev.on_event(ev); return
         if ev["type"] == "note" and not ev["on"]:
             self.dev.on_event(ev); return
         if self.editor.learned(ev): return

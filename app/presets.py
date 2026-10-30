@@ -14,30 +14,32 @@ def _m(name, ttype, ch, num, action, params=None, **kw):
 
 PAD_CH = 9   # канал 10
 CH1 = 0
+ANY = None   # ручки/фейдеры/энкодер/полосы: любой канал (у разных прошивок/программ MiniLab свой канал)
 KNOBS = [74, 71, 76, 77, 93, 18, 19, 16]
 FADERS = [82, 83, 85, 17]
 
 def minilab3_profile():
     P = []
     # фейдеры
-    P.append(_m("Фейдер 1", "cc", CH1, 82, "master_volume", {"step": 5}, mode="absolute"))
-    P.append(_m("Фейдер 2", "cc", CH1, 83, "mic_volume", {"step": 5}, mode="absolute"))
-    P.append(_m("Фейдер 3", "cc", CH1, 85, "app_volume", {"process": "chrome.exe", "step": 5}, mode="absolute"))
-    P.append(_m("Фейдер 4", "cc", CH1, 17, "app_volume", {"process": "Telegram.exe", "step": 5}, mode="absolute"))
+    P.append(_m("Фейдер 1", "cc", ANY, 82, "master_volume", {"step": 5}, mode="absolute"))
+    P.append(_m("Фейдер 2", "cc", ANY, 83, "mic_volume", {"step": 5}, mode="absolute"))
+    P.append(_m("Фейдер 3", "cc", ANY, 85, "app_volume", {"process": "chrome.exe", "step": 5}, mode="absolute"))
+    P.append(_m("Фейдер 4", "cc", ANY, 17, "app_volume", {"process": "Telegram.exe", "step": 5}, mode="absolute"))
     # ручки
-    P.append(_m("Ручка 1", "cc", CH1, 74, "brightness", {"step": 10}, mode="absolute"))
-    P.append(_m("Ручка 2", "cc", CH1, 71, "app_volume", {"process": "Spotify.exe", "step": 5}, mode="absolute"))
-    P.append(_m("Ручка 3", "cc", CH1, 76, "scroll", {"lines": 3}, mode="abs_to_rel"))
-    P.append(_m("Ручка 4", "cc", CH1, 77, "rel_hotkeys", {"up": "ctrl+=", "down": "ctrl+-"}, mode="abs_to_rel"))
-    P.append(_m("Ручка 5", "cc", CH1, 93, "rel_hotkeys", {"up": "ctrl+tab", "down": "ctrl+shift+tab"}, mode="abs_to_rel"))
-    P.append(_m("Ручка 6", "cc", CH1, 18, "none", {}, mode="absolute"))
-    P.append(_m("Ручка 7", "cc", CH1, 19, "none", {}, mode="absolute"))
-    P.append(_m("Ручка 8", "cc", CH1, 16, "none", {}, mode="absolute"))
+    P.append(_m("Ручка 1", "cc", ANY, 74, "brightness", {"step": 10}, mode="absolute"))
+    P.append(_m("Ручка 2", "cc", ANY, 71, "app_volume", {"process": "Spotify.exe", "step": 5}, mode="absolute"))
+    P.append(_m("Ручка 3", "cc", ANY, 76, "scroll", {"lines": 3}, mode="abs_to_rel"))
+    P.append(_m("Ручка 4", "cc", ANY, 77, "rel_hotkeys", {"up": "ctrl+=", "down": "ctrl+-"}, mode="abs_to_rel"))
+    P.append(_m("Ручка 5", "cc", ANY, 93, "rel_hotkeys", {"up": "ctrl+tab", "down": "ctrl+shift+tab"}, mode="abs_to_rel"))
+    P.append(_m("Ручка 6", "cc", ANY, 18, "none", {}, mode="absolute"))
+    P.append(_m("Ручка 7", "cc", ANY, 19, "none", {}, mode="absolute"))
+    P.append(_m("Ручка 8", "cc", ANY, 16, "none", {}, mode="absolute"))
     # главный энкодер
-    P.append(_m("Главный энкодер", "cc", CH1, 28, "master_volume", {"step": 2}, mode="relative_offset64"))
-    P.append(_m("Главный энкодер: нажатие", "cc", CH1, 118, "master_mute", {}, mode="button", button_mode="press"))
-    # полоса Mod — громкость Discord, Pitch — свободна
-    P.append(_m("Полоса Mod", "cc", CH1, 1, "app_volume", {"process": "Discord.exe", "step": 5}, mode="absolute"))
+    P.append(_m("Главный энкодер", "cc", ANY, 28, "master_volume", {"step": 2}, mode="relative_offset64"))
+    P.append(_m("Главный энкодер: нажатие", "cc", ANY, 118, "master_mute", {}, mode="button", button_mode="press"))
+    # полоса Mod — громкость Discord, Pitch — питч голоса (включается в настройках)
+    P.append(_m("Полоса Mod", "cc", ANY, 1, "app_volume", {"process": "Discord.exe", "step": 5}, mode="absolute"))
+    P.append(_m("Полоса Pitch: питч голоса", "pitch", ANY, 0, "voice_pitch", {"range": 12}, mode="absolute"))
     # пэды, банк A
     P.append(_m("Пэд A1", "note", PAD_CH, 36, "mic_mute", {"mode": "toggle"}, mode="press"))
     P.append(_m("Пэд A2", "note", PAD_CH, 37, "media", {"cmd": "play_pause"}, mode="press"))

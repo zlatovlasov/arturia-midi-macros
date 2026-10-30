@@ -15,11 +15,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller pytest
       - name: Tests
-        run: python -m pytest -q tests/test_engine.py
+        run: python -m pytest -q tests
       - name: Build exe
         run: >
           pyinstaller --noconfirm --onefile --collect-all vosk --hidden-import sounddevice --windowed --name ArturiaMidiMacros --paths app
-          --hidden-import mido.backends.rtmidi --hidden-import rtmidi
+          --hidden-import mido.backends.rtmidi --hidden-import voice_fx --hidden-import picker --hidden-import calib --hidden-import rtmidi
           --collect-submodules pycaw --collect-submodules comtypes app/main.py
       - name: Smoke import
         run: python -c "import sys; sys.path.insert(0,'app'); import gui, actions, mido; mido.set_backend('mido.backends.rtmidi'); print(mido.get_input_names())"
