@@ -54,7 +54,7 @@ def v4(prefix):
                    ("Minilab3 MIDI",mido.Message("pitchwheel",channel=0,pitch=2400))):
         w.on_midi_ui(port,m)
     app.processEvents(); shot(f"{prefix}-monitor")
-    w.open_calibration(); cal=w.calib
+    w.open_calibration(); cal=w.calib; cal.resize(560, 400); app.processEvents()
     for n in (102,103,104): cal.feed(norm({"type":"control_change","channel":0,"control":n,"value":70}))
     app.processEvents(); shot(f"{prefix}-calibration"); cal.grab().save(f"{out}/{prefix}-calibration-dialog.png"); cal.reject(); app.processEvents()
     w.dev.select_id("pad6")
