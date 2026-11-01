@@ -1,4 +1,4 @@
-# Arturia MIDI Macros
+# MIDI Macros
 
 [![Build Windows exe](https://github.com/zlatovlasov/arturia-midi-macros/actions/workflows/build-windows.yml/badge.svg)](https://github.com/zlatovlasov/arturia-midi-macros/actions/workflows/build-windows.yml)
 [![Release](https://img.shields.io/github/v/release/zlatovlasov/arturia-midi-macros)](https://github.com/zlatovlasov/arturia-midi-macros/releases/latest)
@@ -96,7 +96,7 @@ build.bat        локальная сборка PyInstaller
 
 ## English
 
-**Arturia MIDI Macros** turns an Arturia MiniLab 3 into a Windows 11 control surface: map any key, pad, knob, fader or encoder to hotkeys, app launches, volume and mic control, multi-step scenes, speech-to-text and a live voice pitch effect (±12 semitones via VB-Cable). Includes a live "digital twin" of the controller, a MIDI monitor and a 16-step knob calibration wizard. **[Download the latest .exe](https://github.com/zlatovlasov/arturia-midi-macros/releases/latest)** · build from source with Python 3.12 and `build.bat` · MIT licensed.
+**MIDI Macros** (for Arturia MiniLab 3) turns an Arturia MiniLab 3 into a Windows 11 control surface: map any key, pad, knob, fader or encoder to hotkeys, app launches, volume and mic control, multi-step scenes, speech-to-text and a live voice pitch effect (±12 semitones via VB-Cable). Includes a live "digital twin" of the controller, a MIDI monitor and a 16-step knob calibration wizard. **[Download the latest .exe](https://github.com/zlatovlasov/arturia-midi-macros/releases/latest)** · build from source with Python 3.12 and `build.bat` · MIT licensed.
 
 ---
 
