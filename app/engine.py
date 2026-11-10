@@ -86,6 +86,9 @@ class Engine:
         if name in names:
             self.config["active_profile"] = name
         elif step:
+            # листаем только профили текущего устройства (профиль без пометки — MiniLab 3)
+            pd, dev = self.config.get("profile_devices", {}), self.config.get("device", "minilab3")
+            names = [n for n in names if pd.get(n, "minilab3") == dev] or names
             cur = self.config.get("active_profile")
             i = names.index(cur) if cur in names else 0
             self.config["active_profile"] = names[(i + step) % len(names)]

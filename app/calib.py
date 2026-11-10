@@ -46,24 +46,33 @@ def _same(t, old):
     return t.get("type") == old["type"] and (old["type"] == "pitch" or t.get("number") == old["number"])
 
 
-def apply(cfg, result, defaults):
+def _calib_store(cfg, device):
+    if device in (None, "minilab3"):
+        return cfg.setdefault("calib", {})   # MiniLab 3 — старое поле, совместимо с прошлыми версиями
+    return cfg.setdefault("device_calib", {}).setdefault(device, {})
+
+
+def apply(cfg, result, defaults, device=None, keep_channel=False):
     """result: id -> новый триггер; defaults: id -> старый триггер (со схемы).
-    Сохраняет cfg["calib"] и переносит назначения всех профилей со старого CC на новый.
-    Канал в назначениях ставится «любой» (None) — так работает при любой программе MiniLab.
+    Сохраняет калибровку устройства (MiniLab 3 — cfg["calib"]) и переносит назначения его профилей со старого CC на новый.
+    Канал в назначениях ставится «любой» (None) — так работает при любой программе устройства
+    (keep_channel=True — оставить канал как пришёл: для нот/пэдов).
     Возвращает число переназначенных назначений."""
-    calib = cfg.setdefault("calib", {})
+    calib = _calib_store(cfg, device)
     moves = []
     for cid, new in result.items():
         old = calib.get(cid) or defaults.get(cid)
         if old: moves.append((old, new))
         calib[cid] = dict(new)
     n = 0
-    lists = list(cfg.get("profiles", {}).values()) + [cfg.get("global", [])]
+    dev = device or "minilab3"
+    pd = cfg.get("profile_devices", {})
+    lists = [lst for name, lst in cfg.get("profiles", {}).items() if pd.get(name, "minilab3") == dev] + [cfg.get("global", [])]
     for lst in lists:
         for m in lst:
             t = m.get("trigger", {})
             for old, new in moves:
                 if _same(t, old):
-                    m["trigger"] = {"type": new["type"], "channel": None, "number": new["number"]}
+                    m["trigger"] = {"type": new["type"], "channel": new["channel"] if keep_channel else None, "number": new["number"]}
                     n += 1; break   # одно назначение переносим один раз (без «каскада»)
     return n

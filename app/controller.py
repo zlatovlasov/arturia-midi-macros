@@ -28,10 +28,11 @@ class MacroController:
             chosen = [n for n in self.cfg.get("inputs", []) if n in avail]
             extra = []
             if self.cfg.get("all_minilab_ports", True):
-                # MiniLab 3 отдаёт несколько входов («Minilab3 MIDI», «MIDIIN2 (Minilab3 MIDI)», DAW-порт…):
-                # ручки могут идти не в тот, что выбран, поэтому слушаем все.
-                from presets import maybe_minilab_port
-                extra = [n for n in avail if maybe_minilab_port(n) and n not in chosen]
+                # Устройство отдаёт несколько входов (MiniLab 3: «Minilab3 MIDI», «MIDIIN2 (Minilab3 MIDI)», DAW-порт…):
+                # ручки могут идти не в тот, что выбран, поэтому слушаем все входы выбранного устройства.
+                from devices import listen_port
+                dev = self.cfg.get("device", "minilab3")
+                extra = [n for n in avail if listen_port(dev, n) and n not in chosen]
             want = chosen + extra
             raw = self.hub.open(want)
             failed = {n for n in want if any(str(e).startswith(n + ":") for e in raw)}

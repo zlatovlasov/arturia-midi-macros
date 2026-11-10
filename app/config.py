@@ -12,19 +12,33 @@ def config_dir():
 def config_path():
     return os.path.join(config_dir(), "config.json")
 
+VERSION = 3
+DEFAULT_DEVICE = "minilab3"
+
 def default_config():
-    return {"version": 2, "inputs": [], "autostart": True, "start_minimized": True,
+    return {"version": VERSION, "inputs": [], "autostart": True, "start_minimized": True,
             "active_profile": "MiniLab 3", "global": [],
             "profiles": {"MiniLab 3": minilab3_profile(), "Пустой": []},
             "asked_minilab": False, "hotkey": "ctrl+alt+m", "auto_off_fl": False, "start_off": False, "theme": "dark",
-            "calib": {}, "voice_pitch_enabled": False, "voice_pitch_output": "CABLE Input", "all_minilab_ports": True}
+            "calib": {}, "voice_pitch_enabled": False, "voice_pitch_output": "CABLE Input", "all_minilab_ports": True,
+            # v3: профили устройств. "calib" остаётся калибровкой MiniLab 3 (совместимость со старыми версиями),
+            # калибровка остальных моделей — в "device_calib"[id]; профиль без пометки в "profile_devices" — для MiniLab 3
+            "device": DEFAULT_DEVICE, "profile_devices": {}, "device_calib": {}, "generic_controls": [], "asked_devices": []}
 
 DEVICE_CCS = {74, 71, 76, 77, 93, 18, 19, 16, 82, 83, 85, 17, 28, 118, 1}
 
 def migrate(cfg):
-    """v1 -> v2: ручки/фейдеры/энкодер/полосы MiniLab ловим на любом канале; Pitch -> питч голоса."""
-    if cfg.get("version", 1) >= 2:
-        return cfg
+    """v1 -> v2: ручки/фейдеры/энкодер/полосы MiniLab ловим на любом канале; Pitch -> питч голоса.
+    v2 -> v3: профили устройств; всё старое (профили, калибровка) относится к MiniLab 3."""
+    if cfg.get("version", 1) < 2:
+        _migrate_v1(cfg)
+    if cfg.get("version", 2) < 3:
+        cfg.setdefault("device", DEFAULT_DEVICE)
+        cfg.setdefault("profile_devices", {})
+        cfg["version"] = 3
+    return cfg
+
+def _migrate_v1(cfg):
     for lst in list(cfg.get("profiles", {}).values()) + [cfg.get("global", [])]:
         for m in lst:
             t = m.get("trigger", {})
@@ -36,6 +50,22 @@ def migrate(cfg):
                    "mode": "absolute", "action": {"type": "voice_pitch", "params": {"range": 12}}})
     cfg["version"] = 2
     return cfg
+
+def profile_device(cfg, name):
+    """К какому устройству относится профиль (без пометки — MiniLab 3, как во всех старых конфигах)."""
+    return cfg.get("profile_devices", {}).get(name, DEFAULT_DEVICE)
+
+def device_profiles(cfg, dev=None):
+    """Имена профилей текущего (или указанного) устройства в порядке конфига."""
+    dev = dev or cfg.get("device", DEFAULT_DEVICE)
+    return [n for n in cfg.get("profiles", {}) if profile_device(cfg, n) == dev]
+
+def calib_for(cfg, dev=None):
+    """Калибровка устройства (словарь id контрола -> триггер). MiniLab 3 — в старом поле "calib"."""
+    dev = dev or cfg.get("device", DEFAULT_DEVICE)
+    if dev == DEFAULT_DEVICE:
+        return cfg.setdefault("calib", {})
+    return cfg.setdefault("device_calib", {}).setdefault(dev, {})
 
 def new_id():
     return uuid.uuid4().hex[:8]
@@ -50,6 +80,9 @@ def fix(cfg):
         cfg["profiles"] = {"Пустой": []}
     if cfg["active_profile"] not in cfg["profiles"]:
         cfg["active_profile"] = next(iter(cfg["profiles"]))
+    mine = device_profiles(cfg)
+    if mine and cfg["active_profile"] not in mine:   # активный профиль должен относиться к выбранному устройству
+        cfg["active_profile"] = mine[0]
     for lst in list(cfg["profiles"].values()) + [cfg["global"]]:
         for m in lst:
             m.setdefault("id", new_id()); m.setdefault("action", {"type": "none", "params": {}})

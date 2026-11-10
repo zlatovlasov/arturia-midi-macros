@@ -23,18 +23,21 @@ def dim(h, k=0.35):
     return "#%02x%02x%02x" % (int(r * k), int(g * k), int(b * k))
 
 
-def compute_pad_colors(cfg, bank, state, enabled=True):
-    """-> список из 8 hex-цветов для пэдов текущего банка.
+def compute_pad_colors(cfg, bank, state, enabled=True, trigs=None):
+    """-> список hex-цветов для пэдов текущего банка (MiniLab 3: 8 пэдов, ноты 36+8*банк…, канал 10).
+    trigs — триггеры пэдов другого устройства (по порядку), если не MiniLab 3.
     Приоритет: состояние (микрофон/звук выключен -> красный, включён -> зелёный) > свой цвет пэда > цвет профиля (тускло) > выкл."""
     prof = cfg.get("active_profile")
     own = cfg.get("pad_colors", {}).get(prof, {})
     pcol = cfg.get("profile_colors", {}).get(prof, "#ffffff")
     maps = cfg["profiles"].get(prof, []) + cfg.get("global", [])
+    if trigs is None:
+        trigs = [{"type": "note", "channel": 9, "number": 36 + bank * 8 + i} for i in range(8)]
     out = []
-    for i in range(8):
-        note = 36 + bank * 8 + i
+    for t in trigs:
+        note, ch = t["number"], t.get("channel")
         acts = [m["action"]["type"] for m in maps if m.get("trigger", {}).get("type") == "note"
-                and m["trigger"].get("number") == note and m["trigger"].get("channel") in (None, 9)]
+                and m["trigger"].get("number") == note and m["trigger"].get("channel") in (None, ch)]
         c = own.get(str(note))
         if not c:
             c = dim(pcol) if any(a != "none" for a in acts) else "#000000"

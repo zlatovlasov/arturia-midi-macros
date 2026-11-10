@@ -1,0 +1,834 @@
+[
+ {
+  "id": "pitch",
+  "label": "Полоса Pitch",
+  "kind": "strip",
+  "trig": {
+   "type": "pitch",
+   "channel": null,
+   "number": 0
+  },
+  "default_trig": {
+   "type": "pitch",
+   "channel": null,
+   "number": 0
+  },
+  "rect": [
+   34.0,
+   70.0,
+   26.0,
+   170.0
+  ]
+ },
+ {
+  "id": "mod",
+  "label": "Полоса Mod",
+  "kind": "strip",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 1
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 1
+  },
+  "rect": [
+   72.0,
+   70.0,
+   26.0,
+   170.0
+  ]
+ },
+ {
+  "id": "enc",
+  "label": "Главный энкодер",
+  "kind": "encoder",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 28
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 28
+  },
+  "rect": [
+   150.0,
+   140.0,
+   76.0,
+   76.0
+  ]
+ },
+ {
+  "id": "encclick",
+  "label": "Главный энкодер: нажатие",
+  "kind": "button",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 118
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 118
+  },
+  "rect": [
+   236.0,
+   186.0,
+   40.0,
+   22.0
+  ]
+ },
+ {
+  "id": "knob1",
+  "label": "Ручка 1",
+  "kind": "knob",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 74
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 74
+  },
+  "rect": [
+   318.0,
+   62.0,
+   52.0,
+   52.0
+  ]
+ },
+ {
+  "id": "knob2",
+  "label": "Ручка 2",
+  "kind": "knob",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 71
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 71
+  },
+  "rect": [
+   392.0,
+   62.0,
+   52.0,
+   52.0
+  ]
+ },
+ {
+  "id": "knob3",
+  "label": "Ручка 3",
+  "kind": "knob",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 76
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 76
+  },
+  "rect": [
+   466.0,
+   62.0,
+   52.0,
+   52.0
+  ]
+ },
+ {
+  "id": "knob4",
+  "label": "Ручка 4",
+  "kind": "knob",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 77
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 77
+  },
+  "rect": [
+   540.0,
+   62.0,
+   52.0,
+   52.0
+  ]
+ },
+ {
+  "id": "knob5",
+  "label": "Ручка 5",
+  "kind": "knob",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 93
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 93
+  },
+  "rect": [
+   318.0,
+   146.0,
+   52.0,
+   52.0
+  ]
+ },
+ {
+  "id": "knob6",
+  "label": "Ручка 6",
+  "kind": "knob",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 18
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 18
+  },
+  "rect": [
+   392.0,
+   146.0,
+   52.0,
+   52.0
+  ]
+ },
+ {
+  "id": "knob7",
+  "label": "Ручка 7",
+  "kind": "knob",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 19
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 19
+  },
+  "rect": [
+   466.0,
+   146.0,
+   52.0,
+   52.0
+  ]
+ },
+ {
+  "id": "knob8",
+  "label": "Ручка 8",
+  "kind": "knob",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 16
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 16
+  },
+  "rect": [
+   540.0,
+   146.0,
+   52.0,
+   52.0
+  ]
+ },
+ {
+  "id": "fader1",
+  "label": "Фейдер 1",
+  "kind": "fader",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 82
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 82
+  },
+  "rect": [
+   640.0,
+   50.0,
+   34.0,
+   176.0
+  ]
+ },
+ {
+  "id": "fader2",
+  "label": "Фейдер 2",
+  "kind": "fader",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 83
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 83
+  },
+  "rect": [
+   706.0,
+   50.0,
+   34.0,
+   176.0
+  ]
+ },
+ {
+  "id": "fader3",
+  "label": "Фейдер 3",
+  "kind": "fader",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 85
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 85
+  },
+  "rect": [
+   772.0,
+   50.0,
+   34.0,
+   176.0
+  ]
+ },
+ {
+  "id": "fader4",
+  "label": "Фейдер 4",
+  "kind": "fader",
+  "trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 17
+  },
+  "default_trig": {
+   "type": "cc",
+   "channel": null,
+   "number": 17
+  },
+  "rect": [
+   838.0,
+   50.0,
+   34.0,
+   176.0
+  ]
+ },
+ {
+  "id": "pad1",
+  "label": "Пэд 1",
+  "kind": "pad",
+  "pad": 0,
+  "rect": [
+   120.0,
+   244.0,
+   80.0,
+   64.0
+  ]
+ },
+ {
+  "id": "pad2",
+  "label": "Пэд 2",
+  "kind": "pad",
+  "pad": 1,
+  "rect": [
+   212.0,
+   244.0,
+   80.0,
+   64.0
+  ]
+ },
+ {
+  "id": "pad3",
+  "label": "Пэд 3",
+  "kind": "pad",
+  "pad": 2,
+  "rect": [
+   304.0,
+   244.0,
+   80.0,
+   64.0
+  ]
+ },
+ {
+  "id": "pad4",
+  "label": "Пэд 4",
+  "kind": "pad",
+  "pad": 3,
+  "rect": [
+   396.0,
+   244.0,
+   80.0,
+   64.0
+  ]
+ },
+ {
+  "id": "pad5",
+  "label": "Пэд 5",
+  "kind": "pad",
+  "pad": 4,
+  "rect": [
+   488.0,
+   244.0,
+   80.0,
+   64.0
+  ]
+ },
+ {
+  "id": "pad6",
+  "label": "Пэд 6",
+  "kind": "pad",
+  "pad": 5,
+  "rect": [
+   580.0,
+   244.0,
+   80.0,
+   64.0
+  ]
+ },
+ {
+  "id": "pad7",
+  "label": "Пэд 7",
+  "kind": "pad",
+  "pad": 6,
+  "rect": [
+   672.0,
+   244.0,
+   80.0,
+   64.0
+  ]
+ },
+ {
+  "id": "pad8",
+  "label": "Пэд 8",
+  "kind": "pad",
+  "pad": 7,
+  "rect": [
+   764.0,
+   244.0,
+   80.0,
+   64.0
+  ]
+ },
+ {
+  "id": "key48",
+  "label": "Клавиша 48",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 48
+  },
+  "rect": [
+   30.0,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key50",
+  "label": "Клавиша 50",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 50
+  },
+  "rect": [
+   88.6,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key52",
+  "label": "Клавиша 52",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 52
+  },
+  "rect": [
+   147.2,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key53",
+  "label": "Клавиша 53",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 53
+  },
+  "rect": [
+   205.8,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key55",
+  "label": "Клавиша 55",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 55
+  },
+  "rect": [
+   264.4,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key57",
+  "label": "Клавиша 57",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 57
+  },
+  "rect": [
+   323.0,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key59",
+  "label": "Клавиша 59",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 59
+  },
+  "rect": [
+   381.6,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key60",
+  "label": "Клавиша 60",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 60
+  },
+  "rect": [
+   440.2,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key62",
+  "label": "Клавиша 62",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 62
+  },
+  "rect": [
+   498.8,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key64",
+  "label": "Клавиша 64",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 64
+  },
+  "rect": [
+   557.4,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key65",
+  "label": "Клавиша 65",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 65
+  },
+  "rect": [
+   616.0,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key67",
+  "label": "Клавиша 67",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 67
+  },
+  "rect": [
+   674.6,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key69",
+  "label": "Клавиша 69",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 69
+  },
+  "rect": [
+   733.2,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key71",
+  "label": "Клавиша 71",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 71
+  },
+  "rect": [
+   791.8000000000001,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key72",
+  "label": "Клавиша 72",
+  "kind": "white",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 72
+  },
+  "rect": [
+   850.4,
+   326.0,
+   56.0,
+   104.0
+  ]
+ },
+ {
+  "id": "key49",
+  "label": "Клавиша 49",
+  "kind": "black",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 49
+  },
+  "rect": [
+   70.6,
+   326.0,
+   36.0,
+   64.0
+  ]
+ },
+ {
+  "id": "key51",
+  "label": "Клавиша 51",
+  "kind": "black",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 51
+  },
+  "rect": [
+   129.2,
+   326.0,
+   36.0,
+   64.0
+  ]
+ },
+ {
+  "id": "key54",
+  "label": "Клавиша 54",
+  "kind": "black",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 54
+  },
+  "rect": [
+   246.39999999999998,
+   326.0,
+   36.0,
+   64.0
+  ]
+ },
+ {
+  "id": "key56",
+  "label": "Клавиша 56",
+  "kind": "black",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 56
+  },
+  "rect": [
+   305.0,
+   326.0,
+   36.0,
+   64.0
+  ]
+ },
+ {
+  "id": "key58",
+  "label": "Клавиша 58",
+  "kind": "black",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 58
+  },
+  "rect": [
+   363.6,
+   326.0,
+   36.0,
+   64.0
+  ]
+ },
+ {
+  "id": "key61",
+  "label": "Клавиша 61",
+  "kind": "black",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 61
+  },
+  "rect": [
+   480.8,
+   326.0,
+   36.0,
+   64.0
+  ]
+ },
+ {
+  "id": "key63",
+  "label": "Клавиша 63",
+  "kind": "black",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 63
+  },
+  "rect": [
+   539.4,
+   326.0,
+   36.0,
+   64.0
+  ]
+ },
+ {
+  "id": "key66",
+  "label": "Клавиша 66",
+  "kind": "black",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 66
+  },
+  "rect": [
+   656.6,
+   326.0,
+   36.0,
+   64.0
+  ]
+ },
+ {
+  "id": "key68",
+  "label": "Клавиша 68",
+  "kind": "black",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 68
+  },
+  "rect": [
+   715.2,
+   326.0,
+   36.0,
+   64.0
+  ]
+ },
+ {
+  "id": "key70",
+  "label": "Клавиша 70",
+  "kind": "black",
+  "trig": {
+   "type": "note",
+   "channel": 0,
+   "number": 70
+  },
+  "rect": [
+   773.8000000000001,
+   326.0,
+   36.0,
+   64.0
+  ]
+ }
+]
