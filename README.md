@@ -27,6 +27,7 @@
 - 🎚 **Питч голоса** на полосе Pitch (±12 полутонов) через виртуальный кабель VB-Cable.
 - 🩺 **MIDI-монитор** и мастер **«Калибровка ручек»** из 16 шагов — если ручки шлют нестандартные CC.
 - 🌈 Подсветка пэдов (экспериментально), профили-слои, тёмная/светлая тема, трей и автозапуск.
+- 🎹 **Несколько моделей:** Arturia MiniLab 3 и KeyLab Essential mk3, Akai MPK mini mk3, Novation Launchkey Mini MK3, Korg nanoKONTROL2, Behringer X-TOUCH MINI и режим «любое MIDI-устройство». Модель определяется по имени порта, у каждой свои профили и калибровка. Источники номеров и статус проверки: **[docs/DEVICES.md](docs/DEVICES.md)**.
 
 | Выбор действия | Калибровка | MIDI-монитор |
 |---|---|---|
@@ -74,13 +75,14 @@ app/
   actions.py     каталог действий и их выполнение (WinBackend)
   engine.py      сопоставление MIDI-событий с назначениями
   midi_io.py     MIDI-входы/выходы (mido + python-rtmidi)
-  device.py      определение MiniLab 3 / Arturia
+  device.py      схема устройства (рисуется по профилю)
+  devices/       профили моделей: раскладка, номера CC/нот, калибровка, порты
   leds.py        подсветка пэдов (SysEx)
   voice.py       голос в текст (Windows / Vosk)
   voice_fx.py    питч голоса → VB-Cable
   presets.py     готовые профили
   config.py, theme.py, macro.py, controller.py
-tests/           pytest (37 тестов)
+tests/           pytest
 docs/            руководство и скриншоты
 build.bat        локальная сборка PyInstaller
 ```
