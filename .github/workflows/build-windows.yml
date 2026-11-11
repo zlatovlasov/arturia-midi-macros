@@ -23,7 +23,7 @@ jobs:
         run: python -m pytest -q tests
       - name: Build exe
         run: >
-          pyinstaller --noconfirm --onefile --collect-all vosk --hidden-import sounddevice --windowed --name ArturiaMidiMacros --paths app
+          pyinstaller --noconfirm --onefile --collect-all vosk --hidden-import sounddevice --windowed --name ArturiaMidiMacros --paths app --collect-submodules devices
           --hidden-import mido.backends.rtmidi --hidden-import voice_fx --hidden-import picker --hidden-import calib --hidden-import rtmidi
           --collect-submodules pycaw --collect-submodules comtypes app/main.py
       - name: Smoke import

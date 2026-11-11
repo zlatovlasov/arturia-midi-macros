@@ -7,12 +7,13 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
 import config as C
 from engine import Engine, norm_msg, trigger_from, describe_trigger, CC_MODES, NOTE_MODES
 from actions import ACTIONS, label, Runner, normalize_urls, MAX_LINKS, find_browsers
-from presets import minilab3_profile, is_minilab3, maybe_minilab_port
+from presets import minilab3_profile, maybe_minilab_port
 from leds import LedOut, compute_pad_colors, PALETTE
 from macro import SCENE_STEPS
 from midi_io import MidiHub, Worker, list_inputs
 from controller import MacroController, fl_is_running
 from device import DeviceView
+import devices as D
 from picker import ActionPicker, ActionButton
 from calib import Calibration, ORDER as CALIB_ORDER
 import calib as CAL
@@ -258,6 +259,7 @@ class Editor(QFrame):
         self.addb.setEnabled(self.trig is not None)
 
     def mappings_for(self, trig):
+        if not trig: return []
         out = []
         for m in self.main.cur_list():
             t = m.get("trigger", {})
@@ -267,8 +269,14 @@ class Editor(QFrame):
 
     def show_control(self, title, trig, sel_id=None):
         self.control_title, self.trig = title, trig
+        if trig is None:   # номер контрола ещё не известен (нет в документации) — сначала «пошевелить»
+            self.title.setText(title); self.colrow.setVisible(False); self.items = []
+            self.sub.setText("Номер этого контрола не опубликован производителем. Пошевелите его на устройстве — "
+                             "программа запомнит, что он шлёт (или пройдите «Калибровку»).")
+            self.list.blockSignals(True); self.list.clear(); self.list.blockSignals(False)
+            self.m = None; self.set_enabled(False); return
         self.title.setText(title); self.sub.setText(describe_trigger(trig))
-        is_pad = trig["type"] == "note" and trig["channel"] == 9 and 36 <= trig["number"] <= 51
+        is_pad = self.main.dev.is_pad_trig(trig) if hasattr(self.main, "dev") else (trig["type"] == "note" and trig["channel"] == 9 and 36 <= trig["number"] <= 51)
         self.colrow.setVisible(is_pad)
         if is_pad:
             if self.swatches: self.swatches.setParent(None)
@@ -391,7 +399,7 @@ class SettingsDialog(QDialog):
         self.autostart = QCheckBox("Запускать вместе с Windows"); self.autostart.setChecked(cfg.get("autostart", True))
         self.start_off = QCheckBox("Стартовать в состоянии ВЫКЛ (порт свободен)"); self.start_off.setChecked(cfg.get("start_off", False))
         self.fl = QCheckBox("Автоматически выключать, пока открыт FL Studio"); self.fl.setChecked(cfg.get("auto_off_fl", False))
-        self.allports = QCheckBox("Слушать все входы MiniLab (рекомендуется: ручки бывают на другом порту)"); self.allports.setChecked(cfg.get("all_minilab_ports", True))
+        self.allports = QCheckBox("Слушать все входы устройства (рекомендуется: ручки бывают на другом порту)"); self.allports.setChecked(cfg.get("all_minilab_ports", True))
         self.pitch = QCheckBox("Питч голоса на полосе Pitch (виртуальный микрофон VB-Cable)"); self.pitch.setChecked(cfg.get("voice_pitch_enabled", False))
         for w in (self.autostart, self.start_off, self.fl, self.allports, self.pitch): L.addWidget(w)
         f = QFormLayout(); self.hk = QLineEdit(cfg.get("hotkey", "ctrl+alt+m")); f.addRow("Горячая клавиша ВКЛ/ВЫКЛ", self.hk)
@@ -453,11 +461,11 @@ class MidiMonitor(QFrame):
 class CalibrationDialog(QDialog):
     """Мастер «Калибровка ручек»: по очереди подсвечивает контрол на схеме, ждёт движения, запоминает CC/канал."""
     def __init__(self, main):
-        super().__init__(main); self.main = main; self.cal = Calibration(CALIB_ORDER)
+        super().__init__(main); self.main = main; self.cal = Calibration(main.dev.prof.get("calib") or CALIB_ORDER)
         self.setWindowTitle("Калибровка ручек"); self.setMinimumSize(520, 380); self.setModal(False)
         L = QVBoxLayout(self); L.setContentsMargins(22, 20, 22, 18); L.setSpacing(10)
         h = QLabel("Калибровка ручек"); h.setObjectName("h1"); L.addWidget(h)
-        info = QLabel("Покрутите контрол, который подсвечен на схеме. Программа запомнит, что реально шлёт ваша MiniLab, "
+        info = QLabel(f"Покрутите контрол, который подсвечен на схеме. Программа запомнит, что реально шлёт ваш {main.dev.prof['name']}, "
                       "и перенесёт на него все назначения. Если какого-то контрола нет — «Пропустить».")
         info.setWordWrap(True); info.setObjectName("muted"); info.setMinimumHeight(64); L.addWidget(info)
         self.step = QLabel(""); self.step.setObjectName("muted"); L.addWidget(self.step)
@@ -493,8 +501,9 @@ class CalibrationDialog(QDialog):
     def back(self): self.cal.back(); self.refresh()
 
     def finish(self):
-        n = CAL.apply(self.main.cfg, self.cal.result, self.main.dev.defaults())
-        self.main.dev.set_calib(self.main.cfg.get("calib", {})); self.main.persist()
+        dev = self.main.dev.device
+        n = CAL.apply(self.main.cfg, self.cal.result, self.main.dev.defaults(), device=dev)
+        self.main.dev.set_calib(C.calib_for(self.main.cfg, dev)); self.main.persist()
         self.main.notify(f"Калибровка сохранена: контролов {len(self.cal.result)}, назначений перенесено {n}")
         self.accept()
 
@@ -508,7 +517,7 @@ class Main(QMainWindow):
         super().__init__()
         self.cfg, self.do_save = cfg, save
         self.list_inputs = inputs_fn or list_inputs; self.known_inputs = []
-        self.setWindowTitle("MIDI Макросы — MiniLab 3"); self.setWindowIcon(tray_icon(True)); self.resize(1480, 860)
+        self.setWindowTitle(f"MIDI Макросы — {D.get(cfg.get('device')).get('name')}"); self.setWindowIcon(tray_icon(True)); self.resize(1480, 860)
         self.bus = Bus()
         self.runner = Runner(backend, on_profile=self.switch_profile_async, notify=self.bus.note.emit, on_off=self.bus.toggle.emit)
         self.engine = Engine(cfg, self.runner)
@@ -534,6 +543,7 @@ class Main(QMainWindow):
                         (None, None), ("Загрузить готовый MiniLab 3", self.add_minilab), ("Импорт…", self.do_import), ("Экспорт…", self.do_export)):
             if txt is None: menu.addSeparator(); continue
             a = menu.addAction(txt); a.triggered.connect(fn)
+            if fn == self.add_minilab: self.add_preset_action = a
         pcm = menu.addMenu("Цвет профиля (подсветка)")
         for nm, hx in PALETTE.items():
             a = pcm.addAction(nm); a.triggered.connect(lambda _=False, hx=hx: self.set_profile_color(hx))
@@ -546,11 +556,16 @@ class Main(QMainWindow):
 
         body = QHBoxLayout(); body.setContentsMargins(18, 16, 18, 10); body.setSpacing(16); L.addLayout(body, 1)
         leftw = QFrame(); leftw.setObjectName("card"); LL = QVBoxLayout(leftw); LL.setContentsMargins(16, 14, 16, 14)
-        hl = QHBoxLayout(); hh = QLabel("Ваша MiniLab 3"); hh.setObjectName("h2"); hl.addWidget(hh); hl.addStretch(1)
+        hl = QHBoxLayout(); hh = QLabel("Устройство"); hh.setObjectName("h2"); hl.addWidget(hh)
+        self.devsel = QComboBox(); self.devsel.setMinimumWidth(210)
+        for d in D.all_devices(): self.devsel.addItem(f"{d['vendor']} {d['name']}".strip(), d["id"])
+        self.devsel.setCurrentIndex(max(0, self.devsel.findData(D.get(cfg.get("device")).get("id"))))
+        self.devsel.currentIndexChanged.connect(lambda _: self.set_device(self.devsel.currentData())); hl.addWidget(self.devsel); hl.addStretch(1)
         self.live = QLabel("Нажимайте контролы — схема повторяет их вживую"); self.live.setObjectName("muted"); hl.addWidget(self.live)
         LL.addLayout(hl)
-        cb = QPushButton("Калибровка ручек"); cb.clicked.connect(self.open_calibration); hl.addWidget(cb)
-        self.dev = DeviceView(); self.dev.set_calib(cfg.get("calib", {})); self.dev.selected.connect(self.control_selected); self.dev.on_bank = lambda: (self.refresh_mapped(), self.update_leds()); LL.addWidget(self.dev, 1)
+        self.calb = QPushButton("Калибровка ручек"); self.calb.clicked.connect(self.open_calibration); hl.addWidget(self.calb)
+        self.dev = DeviceView(); self._load_device_view(); self.dev.selected.connect(self.control_selected); self.dev.on_bank = lambda: (self.refresh_mapped(), self.update_leds()); LL.addWidget(self.dev, 1)
+        self.dev.on_new_control = self._generic_added
         self.offmask = QLabel(""); self.offmask.setObjectName("muted"); self.offmask.setAlignment(Qt.AlignCenter); LL.addWidget(self.offmask)
         self.monitor = MidiMonitor(); LL.addWidget(self.monitor)
         body.addWidget(leftw, 3)
@@ -567,19 +582,22 @@ class Main(QMainWindow):
         self.tray.setContextMenu(tm); self.tray.activated.connect(lambda r: self.show_normal() if r == QSystemTrayIcon.Trigger else None)
         self.tray.show()
 
+        if not C.device_profiles(cfg):   # устройство выбрано, а профиля под него ещё нет — стартовый набор
+            cfg["active_profile"] = self._new_device_profile(cfg.get("device", D.DEFAULT))
         self.fill_profiles(); self.ctl.apply(); self.update_leds()
         self.worker = Worker(self.hub, self.engine); self.worker.start()
         self.pt = QTimer(self); self.pt.timeout.connect(self.poll_profile); self.pt.start(100)
         self.hk_handle = None; self.register_hotkey()
         self._fl_stop = False; threading.Thread(target=self._fl_loop, daemon=True).start()
         QTimer.singleShot(400, self.maybe_suggest_minilab)
-        self.dev.select_id("pad1")
+        self.dev.select_id(self._first_control())
 
     # ---------- общее
     def _inputs(self):
         n = self.list_inputs(); self.known_inputs = n
         if not self.cfg.get("inputs"):
-            self.cfg["inputs"] = [x for x in n if is_minilab3(x)] or [x for x in n if maybe_minilab_port(x)] or n[:1]
+            dev = self.cfg.get("device", D.DEFAULT)
+            self.cfg["inputs"] = [x for x in n if D.match_port(dev, x)] or [x for x in n if D.listen_port(dev, x)] or n[:1]
         return n
 
     def persist(self):
@@ -594,7 +612,7 @@ class Main(QMainWindow):
     def closeEvent(self, e): e.ignore(); self.hide(); self.notify("Работаю в трее")
 
     def quit(self):
-        self._fl_stop = True; self.worker.running = False; self.runner.stop_pitch(); self.led.close(colors_on_release=["#7f7f7f"] * 8); self.hub.close(); self.persist(); QApplication.quit()
+        self._fl_stop = True; self.worker.running = False; self.runner.stop_pitch(); self.led.close(colors_on_release=["#7f7f7f"] * 8 if self.led.port else None); self.hub.close(); self.persist(); QApplication.quit()
 
     # ---------- ВКЛ/ВЫКЛ
     def show_state(self, st):
@@ -616,7 +634,10 @@ class Main(QMainWindow):
             self.offmask.setText("FL Studio запущен — порт отдан ему. Макросы включатся сами, когда FL закроется.")
         else:
             txt, bg, fg = "○ Порт свободен", "#24221f", "#bdb6ad"
-            self.offmask.setText(f"Макросы выключены — MiniLab 3 работает как обычная MIDI-клавиатура (FL Studio и др.). Включить: {hk}")
+            name = self.dev.prof["name"] if hasattr(self, "dev") else "MiniLab 3"
+            kb = not hasattr(self, "dev") or any(c["kind"] == "white" for c in self.dev.controls)
+            what = "обычная MIDI-клавиатура" if kb else "обычный MIDI-контроллер"
+            self.offmask.setText(f"Макросы выключены — {name} работает как {what} (FL Studio и др.). Включить: {hk}")
         self.port.setText(txt); self.port.setStyleSheet(f"background:{theme.hx(bg)}; color:{theme.hx(fg)};")
         self.tray.setToolTip(f"MIDI Макросы — {'ВКЛ' if st['mode'] == 'on' else 'ВЫКЛ'}")
         self.notify({"on": "Макросы включены", "off": "Макросы выключены, порт свободен", "fl": "FL Studio открыт — макросы на паузе", "error": "Не удалось открыть порт"}[st["mode"]])
@@ -633,8 +654,14 @@ class Main(QMainWindow):
 
     def update_leds(self):
         on = self.ctl.state.get("mode") == "on"
-        colors = compute_pad_colors(self.cfg, self.dev.bank, self.runner.state, enabled=True)
-        self.dev.pad_colors = {f"pad{i + 1}": c for i, c in enumerate(colors)}; self.dev.update()
+        hw = self.dev.prof.get("led") == "minilab3"   # подсветка на самом устройстве — только где SysEx известен
+        pads = self.dev.pads()
+        colors = compute_pad_colors(self.cfg, self.dev.bank, self.runner.state, enabled=True, trigs=None if hw else self.dev.pad_trigs())
+        self.dev.pad_colors = {c["id"]: hx for c, hx in zip(pads, colors)}; self.dev.update()
+        if not hw:
+            if self.led.port: self.led.close(colors_on_release=["#7f7f7f"] * 8)
+            self.ledhint.setText(f"Подсветка на самом {self.dev.prof['name']} пока не поддерживается — цвета только на схеме" if (on and pads) else "")
+            return
         name = self.led_port_name() if on else None
         if on and name and self.led.open(name):
             try: self.led.send(colors)
@@ -684,6 +711,8 @@ class Main(QMainWindow):
             d.apply(); self.persist(); self.register_hotkey(); self.ctl.apply(); self.update_leds()
 
     def maybe_suggest_minilab(self):
+        self.maybe_suggest_device()
+        if self.cfg.get("device", D.DEFAULT) != D.DEFAULT: return
         if self.cfg.get("asked_minilab") or not any(maybe_minilab_port(n) for n in self.known_inputs): return
         self.cfg["asked_minilab"] = True; self.persist()
         if "MiniLab 3" in self.cfg["profiles"]:
@@ -693,7 +722,25 @@ class Main(QMainWindow):
             self.add_minilab()
 
     # ---------- MIDI в интерфейсе
+    def maybe_suggest_device(self):
+        """Подключено другое известное устройство, а выбранного нет — предложить переключиться (один раз на модель)."""
+        cur = self.cfg.get("device", D.DEFAULT); n = self.known_inputs
+        found = D.detect(n)
+        if not found or found == cur or any(D.match_port(cur, x) for x in n): return
+        asked = self.cfg.setdefault("asked_devices", [])
+        if found in asked: return
+        asked.append(found); self.persist()
+        d = D.get(found)
+        if QMessageBox.question(self, d["name"], f"Найдено устройство {d['vendor']} {d['name']}. Переключить схему и профили на него?") == QMessageBox.Yes:
+            self.devsel.setCurrentIndex(self.devsel.findData(found))
+
     def open_calibration(self):
+        if self.dev.prof.get("dynamic"):   # Generic: кнопка очищает появившиеся контролы
+            if QMessageBox.question(self, "Очистить схему", "Убрать с схемы все появившиеся контролы? Назначения в профиле останутся.") == QMessageBox.Yes:
+                self.cfg["generic_controls"] = []; self.dev.set_extra([]); self.persist()
+            return
+        if not self.dev.prof.get("calib"):
+            self.notify("У этой модели номера фиксированы картой производителя — калибровка не нужна"); return
         if self.calib: self.calib.raise_(); return
         if self.ctl.state.get("mode") != "on":
             self.notify("Включите макросы — калибровке нужен открытый MIDI-порт")
@@ -731,6 +778,7 @@ class Main(QMainWindow):
         if ev["type"] == "note" and not ev["on"]:
             self.dev.on_event(ev); return
         if self.editor.learned(ev): return
+        if self.bind_selected(ev): return
         c = self.dev.on_event(ev)
         self.live.setText(f"{describe_trigger(trigger_from(ev))}  =  {ev['value']}")
         if c and c is not self.dev.sel and not self.editor.learning:
@@ -739,19 +787,77 @@ class Main(QMainWindow):
     def control_selected(self, c):
         self.editor.show_control(self.dev.label(c), self.dev.trig(c))
 
+    def bind_selected(self, ev):
+        """Выделен контрол без известного номера, и пришло незнакомое сообщение — запоминаем его как этот контрол."""
+        c = self.dev.sel
+        if not c or self.dev.trig(c) is not None or self.dev.find(ev) is not None: return False
+        if ev["type"] == "note" and not ev.get("on"): return False
+        t = {"type": ev["type"], "channel": ev["channel"], "number": ev["number"] if ev["type"] != "pitch" else 0}
+        CAL.apply(self.cfg, {c["id"]: t}, {}, device=self.dev.device)
+        self.dev.set_calib(C.calib_for(self.cfg, self.dev.device)); self.persist()
+        self.dev.select_id(c["id"]); self.dev.on_event(ev)
+        self.notify(f"{self.dev.label(c)}: запомнил — {describe_trigger(t)}")
+        return True
+
     def refresh_mapped(self):
         self.dev.mapped = {c["id"] for c in self.dev.controls
                            if any(m["action"].get("type") != "none" for m in self.editor.mappings_for(self.dev.trig(c)))}
         self.dev.update()
 
+    # ---------- устройства
+    def _load_device_view(self):
+        dev = D.get(self.cfg.get("device")).get("id")
+        self.dev.set_device(dev, C.calib_for(self.cfg, dev), self.cfg.get("generic_controls", []))
+        dyn = self.dev.prof.get("dynamic")
+        self.calb.setText("Очистить схему" if dyn else "Калибровка ручек")
+        self.calb.setEnabled(bool(dyn or self.dev.prof.get("calib")))
+        if hasattr(self, "add_preset_action"): self.add_preset_action.setText(f"Загрузить готовый {self.dev.prof['name']}")
+        self.setWindowTitle(f"MIDI Макросы — {self.dev.prof['name']}")
+
+    def _first_control(self):
+        ids = [c["id"] for c in self.dev.controls]
+        return "pad1" if "pad1" in ids else (ids[0] if ids else None)
+
+    def _generic_added(self, c):
+        self.cfg.setdefault("generic_controls", []).append({k: (list(v) if k == "rect" else v) for k, v in c.items()})
+        self.persist(); self.notify(f"Новый контрол на схеме: {c['label']}")
+
+    def set_device(self, dev):
+        """Сменить модель: схема, калибровка, свои профили (создаёт стартовый, если у модели ещё нет профиля)."""
+        dev = D.get(dev)["id"]
+        if dev == self.cfg.get("device", D.DEFAULT) and getattr(self.dev, "device", None) == dev: return
+        if self.calib: self.calib.reject()
+        self.cfg["device"] = dev
+        mine = [x for x in self.known_inputs if D.match_port(dev, x)]   # входы новой модели добавляем к выбранным
+        if mine: self.cfg["inputs"] = list(dict.fromkeys(list(self.cfg.get("inputs", [])) + mine))
+        names = C.device_profiles(self.cfg, dev)
+        if not names:
+            names = [self._new_device_profile(dev)]
+        if self.cfg["active_profile"] not in names:
+            self.cfg["active_profile"] = names[0]; self.engine.set_profile(names[0])
+        self._load_device_view()
+        if self.devsel.currentData() != dev:
+            self.devsel.blockSignals(True); self.devsel.setCurrentIndex(self.devsel.findData(dev)); self.devsel.blockSignals(False)
+        self.persist(); self.fill_profiles(); self.ctl.apply(); self.update_leds()
+        first = self._first_control()
+        if first: self.dev.select_id(first)
+        self.notify(f"Устройство: {self.dev.prof['vendor']} {self.dev.prof['name']}".strip())
+
+    def _new_device_profile(self, dev, name=None):
+        d = D.get(dev); base = name or d["name"]; n = base; i = 2
+        while n in self.cfg["profiles"]: n = f"{base} ({i})"; i += 1
+        self.cfg["profiles"][n] = D.starter(dev)
+        self.cfg.setdefault("profile_devices", {})[n] = dev
+        return n
+
     # ---------- профили
     def cur_list(self): return self.cfg["profiles"][self.cfg["active_profile"]]
 
     def fill_profiles(self):
-        self.prof.blockSignals(True); self.prof.clear(); self.prof.addItems(list(self.cfg["profiles"]))
+        self.prof.blockSignals(True); self.prof.clear(); self.prof.addItems(C.device_profiles(self.cfg) or list(self.cfg["profiles"]))
         self.prof.setCurrentText(self.cfg["active_profile"]); self.prof.blockSignals(False)
         self.tray_prof.clear()
-        for n in self.cfg["profiles"]:
+        for n in (C.device_profiles(self.cfg) or list(self.cfg["profiles"])):
             a = self.tray_prof.addAction(n); a.setCheckable(True); a.setChecked(n == self.cfg["active_profile"])
             a.triggered.connect(lambda _=False, n=n: self.prof.setCurrentText(n))
         self.refresh_mapped()
@@ -766,28 +872,42 @@ class Main(QMainWindow):
     def poll_profile(self):
         if self._profile_req:
             name, step = self._profile_req; self._profile_req = None
-            n = self.engine.set_profile(name, step); self.persist(); self.fill_profiles(); self.update_leds(); self.notify(f"Профиль: {n}")
+            n = self.engine.set_profile(name, step)
+            if n and C.profile_device(self.cfg, n) != self.cfg.get("device", D.DEFAULT):   # профиль другой модели — переключаем и схему
+                self.set_device(C.profile_device(self.cfg, n)); self.cfg["active_profile"] = n
+            self.persist(); self.fill_profiles(); self.update_leds(); self.notify(f"Профиль: {n}")
 
     def new_profile(self):
         n, ok = QInputDialog.getText(self, "Новый профиль", "Название:")
         if ok and n and n not in self.cfg["profiles"]:
-            self.cfg["profiles"][n] = []; self.fill_profiles(); self.prof.setCurrentText(n)
+            self.cfg["profiles"][n] = []; self._tag(n); self.fill_profiles(); self.prof.setCurrentText(n)
 
     def dup_profile(self):
         cur = self.cfg["active_profile"]; n = cur + " (копия)"
         self.cfg["profiles"][n] = copy.deepcopy(self.cfg["profiles"][cur])
         for m in self.cfg["profiles"][n]: m["id"] = C.new_id()
-        self.fill_profiles(); self.prof.setCurrentText(n)
+        self._tag(n); self.fill_profiles(); self.prof.setCurrentText(n)
+
+    def _tag(self, name):
+        """Новый профиль относится к текущему устройству (MiniLab 3 — без пометки, как раньше)."""
+        dev = self.cfg.get("device", D.DEFAULT)
+        if dev != D.DEFAULT: self.cfg.setdefault("profile_devices", {})[name] = dev
+        else: self.cfg.get("profile_devices", {}).pop(name, None)
 
     def del_profile(self):
-        if len(self.cfg["profiles"]) < 2: return
+        mine = C.device_profiles(self.cfg)
+        if len(mine) < 2: return
         cur = self.cfg["active_profile"]
         if QMessageBox.question(self, "Удалить", f"Удалить профиль «{cur}»?") == QMessageBox.Yes:
-            del self.cfg["profiles"][cur]; self.cfg["active_profile"] = next(iter(self.cfg["profiles"])); self.persist(); self.fill_profiles()
+            del self.cfg["profiles"][cur]; self.cfg.get("profile_devices", {}).pop(cur, None)
+            self.cfg["active_profile"] = C.device_profiles(self.cfg)[0]; self.persist(); self.fill_profiles()
 
     def add_minilab(self):
+        dev = self.cfg.get("device", D.DEFAULT)
+        if dev != D.DEFAULT:   # готовый набор для выбранной модели
+            n = self._new_device_profile(dev); self.persist(); self.fill_profiles(); self.prof.setCurrentText(n); return
         n = "MiniLab 3" if "MiniLab 3" not in self.cfg["profiles"] else f"MiniLab 3 ({len(self.cfg['profiles'])})"
-        self.cfg["profiles"][n] = minilab3_profile(); self.persist(); self.fill_profiles(); self.prof.setCurrentText(n)
+        self.cfg["profiles"][n] = minilab3_profile(); self._tag(n); self.persist(); self.fill_profiles(); self.prof.setCurrentText(n)
 
     def do_import(self):
         p, _ = QFileDialog.getOpenFileName(self, "Импорт", "", "JSON (*.json)")
@@ -795,7 +915,10 @@ class Main(QMainWindow):
         try: new = C.import_from(p)
         except Exception as e: return QMessageBox.warning(self, "Импорт", str(e))
         for k, v in new["profiles"].items():
-            self.cfg["profiles"][k if k not in self.cfg["profiles"] else k + " (импорт)"] = v
+            nk = k if k not in self.cfg["profiles"] else k + " (импорт)"
+            self.cfg["profiles"][nk] = v
+            dv = C.profile_device(new, k)
+            if dv != D.DEFAULT: self.cfg.setdefault("profile_devices", {})[nk] = dv
         self.persist(); self.fill_profiles()
 
     def do_export(self):

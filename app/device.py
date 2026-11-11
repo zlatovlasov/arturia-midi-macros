@@ -1,99 +1,151 @@
-"""Интерактивная схема MiniLab 3 (QPainter)."""
+"""Интерактивная схема устройства (QPainter). Раскладка и номера — из профиля в app/devices/."""
 import time
 from PySide6.QtCore import Qt, QRectF, QPointF, Signal, QTimer
 from PySide6.QtGui import QPainter, QColor, QPen, QFont, QBrush, QLinearGradient
 from PySide6.QtWidgets import QWidget
 from theme import col, overlay
-from presets import KNOBS, FADERS, PAD_CH, CH1
+import devices as D
+from devices import generic as G
 
-W, H = 940, 440
+W, H = 940, 440   # холст MiniLab 3 (у других моделей — DEVICE["size"])
 
-def build_controls(calib=None):
-    c = _build()
-    for x in c:   # ручки/фейдеры/энкодер/полосы: канал любой; калибровка подменяет CC
-        if x["kind"] in ("strip", "encoder", "button", "knob", "fader"):
-            x["default_trig"] = dict(x["trig"], channel=None)
-            x["trig"] = dict((calib or {}).get(x["id"]) or x["default_trig"], channel=None)
+def build_controls(calib=None, device=D.DEFAULT, extra=None):
+    """Контролы схемы из профиля устройства. calib: id -> триггер (калибровка); extra — контролы Generic MIDI."""
+    prof = D.get(device)
+    src = list(prof["controls"]) if not prof.get("dynamic") else list(extra or [])
+    c = []
+    for x in src:
+        x = dict(x); r = x["rect"]; x["rect"] = QRectF(*r) if not isinstance(r, QRectF) else QRectF(r)
+        if prof.get("dynamic"):
+            x["trig"] = dict(x["trig"])   # Generic: канал как пришёл
+        elif "bank_trigs" in x:
+            x["bank_trigs"] = [D.default_trig(x, b) for b in range(len(x["bank_trigs"]))]
+        elif x["kind"] in D.ANY_CHANNEL_KINDS:   # ручки/фейдеры/энкодер/полосы/кнопки: канал любой; калибровка подменяет CC
+            x["default_trig"] = D.default_trig(x)
+            got = (calib or {}).get(x["id"]) or x["default_trig"]
+            x["trig"] = dict(got, channel=None) if got else None
+        else:
+            got = (calib or {}).get(x["id"])
+            x["default_trig"] = dict(x["trig"]) if x.get("trig") else None
+            x["trig"] = dict(got) if got else x["default_trig"]
+        c.append(x)
     return c
 
 CONTINUOUS = ("strip", "encoder", "knob", "fader")
-
-def _build():
-    c = []
-    c.append({"id": "pitch", "label": "Полоса Pitch", "kind": "strip", "trig": {"type": "pitch", "channel": CH1, "number": 0}, "rect": QRectF(34, 70, 26, 170)})
-    c.append({"id": "mod", "label": "Полоса Mod", "kind": "strip", "trig": {"type": "cc", "channel": CH1, "number": 1}, "rect": QRectF(72, 70, 26, 170)})
-    c.append({"id": "enc", "label": "Главный энкодер", "kind": "encoder", "trig": {"type": "cc", "channel": CH1, "number": 28}, "rect": QRectF(150, 140, 76, 76)})
-    c.append({"id": "encclick", "label": "Главный энкодер: нажатие", "kind": "button", "trig": {"type": "cc", "channel": CH1, "number": 118}, "rect": QRectF(236, 186, 40, 22)})
-    for i, cc in enumerate(KNOBS):
-        x = 318 + (i % 4) * 74; y = 62 + (i // 4) * 84
-        c.append({"id": f"knob{i+1}", "label": f"Ручка {i+1}", "kind": "knob", "trig": {"type": "cc", "channel": CH1, "number": cc}, "rect": QRectF(x, y, 52, 52)})
-    for i, cc in enumerate(FADERS):
-        x = 640 + i * 66
-        c.append({"id": f"fader{i+1}", "label": f"Фейдер {i+1}", "kind": "fader", "trig": {"type": "cc", "channel": CH1, "number": cc}, "rect": QRectF(x, 50, 34, 176)})
-    for i in range(8):
-        x = 120 + i * 92
-        c.append({"id": f"pad{i+1}", "label": f"Пэд {i+1}", "kind": "pad", "pad": i, "rect": QRectF(x, 244, 80, 64)})
-    whites = [0, 2, 4, 5, 7, 9, 11]
-    n = 0
-    for k in range(25):
-        note = 48 + k
-        if (k % 12) in whites or k == 24:
-            c.append({"id": f"key{note}", "label": f"Клавиша {note}", "kind": "white", "trig": {"type": "note", "channel": CH1, "number": note}, "rect": QRectF(30 + n * 58.6, 326, 56, 104)}); n += 1
-    n = 0
-    for k in range(25):
-        note = 48 + k
-        if (k % 12) in whites or k == 24:
-            n += 1; continue
-        c.append({"id": f"key{note}", "label": f"Клавиша {note}", "kind": "black", "trig": {"type": "note", "channel": CH1, "number": note}, "rect": QRectF(30 + n * 58.6 - 18, 326, 36, 64)})
-    return c
 
 
 class DeviceView(QWidget):
     selected = Signal(dict)
 
-    def __init__(self):
+    def __init__(self, device=D.DEFAULT):
         super().__init__()
-        self.controls = build_controls(); self.bank = 0; self.sel = None
+        self.bank = 0; self.sel = None
         self.seen = set(); self.calib_target = None   # что уже шевелили; что подсвечивает мастер калибровки
         self.lit, self.values, self.mapped, self.held, self.pad_colors = {}, {}, set(), set(), {}
         self.screen_text = ""
+        self.on_new_control = None   # Generic MIDI: вызывается с новым контролом, чтобы GUI сохранил его
+        self.set_device(device)
         self.setMinimumSize(620, 300); self.setMouseTracking(True); self.hover = None
         self.t = QTimer(self); self.t.timeout.connect(self._fade); self.t.start(40)
 
-    def trig(self, c):
-        if c["kind"] == "pad":
-            return {"type": "note", "channel": PAD_CH, "number": 36 + self.bank * 8 + c["pad"]}
-        return c["trig"]
+    # --- устройство
+    def set_device(self, device, calib=None, extra=None):
+        """Сменить модель на схеме: профиль, калибровка, контролы Generic MIDI."""
+        self.prof = D.get(device); self.device = self.prof["id"]
+        self.W, self.H = self.prof.get("size", (W, H))
+        self.calib = dict(calib or {}); self.extra = [dict(x) for x in (extra or [])]
+        self.bank = 0; self.sel = None; self.hover = None
+        self.seen, self.lit, self.values, self.held, self.pad_colors = set(), {}, {}, set(), {}
+        self.screen_text = ""
+        self.controls = build_controls(self.calib, self.device, self.extra)
+        self.update()
+
+    @property
+    def nbanks(self):
+        b = self.prof.get("banks")
+        return len(b["names"]) if b else 1
+
+    def bank_name(self, b=None):
+        b = self.bank if b is None else b
+        bk = self.prof.get("banks")
+        return bk["names"][b] if bk else ""
+
+    def trig(self, c, bank=None):
+        """Триггер контрола (для банковых — текущего банка). None — номер ещё не известен (нужна калибровка)."""
+        if "bank_trigs" in c:
+            return c["bank_trigs"][self.bank if bank is None else bank]
+        return c.get("trig")
+
+    def pads(self):
+        """Пэды устройства по порядку (для цветов/подсветки)."""
+        ids = self.prof.get("pads", [])
+        by = {c["id"]: c for c in self.controls}
+        return [by[i] for i in ids if i in by]
+
+    def pad_trigs(self):
+        return [self.trig(c) for c in self.pads()]
+
+    def is_pad_trig(self, t):
+        """Это триггер пэда устройства (любой банк)? — для выбора цвета пэда в редакторе."""
+        if not t: return False
+        for c in self.pads():
+            for b in range(self.nbanks if "bank_trigs" in c else 1):
+                pt = self.trig(c, b if "bank_trigs" in c else None)
+                if pt and pt["type"] == t.get("type") and pt["number"] == t.get("number") and pt.get("channel") in (None, t.get("channel")):
+                    return True
+        return False
 
     def set_calib(self, calib):
         sel = self.sel["id"] if self.sel else None
-        self.controls = build_controls(calib)
+        self.calib = dict(calib or {})
+        self.controls = build_controls(self.calib, self.device, self.extra)
         self.sel = next((c for c in self.controls if c["id"] == sel), None); self.update()
+
+    def set_extra(self, extra):
+        """Generic MIDI: заменить набор появившихся контролов (например, «Очистить схему»)."""
+        self.extra = [dict(x) for x in (extra or [])]; self.set_calib(self.calib)
 
     def defaults(self):
         return {c["id"]: c["default_trig"] for c in self.controls if "default_trig" in c}
 
     def label(self, c):
-        return f"Пэд {'AB'[self.bank]}{c['pad']+1}" if c["kind"] == "pad" else c["label"]
+        if "{bank}" in c["label"]:
+            return c["label"].format(bank=self.bank_name())
+        return c["label"]
 
     def set_bank(self, b):
-        self.bank = b; self.update()
+        self.bank = b % self.nbanks; self.update()
         if getattr(self, 'on_bank', None): self.on_bank()
-        if self.sel and self.sel["kind"] == "pad": self.selected.emit(self.sel)
+        if self.sel and "bank_trigs" in self.sel: self.selected.emit(self.sel)
+
+    @staticmethod
+    def _match(t, ev):
+        return bool(t) and t["type"] == ev["type"] and (t["type"] == "pitch" or t["number"] == ev["number"]) and t["channel"] in (None, ev["channel"])
 
     def find(self, ev):
         for c in self.controls:
-            t = self.trig(c)
-            if t["type"] == ev["type"] and (t["type"] == "pitch" or t["number"] == ev["number"]) and t["channel"] in (None, ev["channel"]):
+            if self._match(self.trig(c), ev):
                 return c
-        if ev["type"] == "note" and ev["channel"] == PAD_CH and 36 <= ev["number"] <= 51:
-            b = (ev["number"] - 36) // 8
-            if b != self.bank: self.set_bank(b)
-            return self.find(ev)
+        for b in range(self.nbanks):   # контрол другого банка/слоя — переключаем банк на схеме
+            if b == self.bank: continue
+            for c in self.controls:
+                if "bank_trigs" in c and self._match(self.trig(c, b), ev):
+                    self.set_bank(b); return c
         return None
 
+    def learn_new(self, ev):
+        """Generic MIDI: незнакомое сообщение -> новый контрол на схеме. Возвращает контрол или None."""
+        if not self.prof.get("dynamic") or ev["type"] not in ("cc", "note", "pitch", "program"): return None
+        if ev["type"] == "note" and not ev.get("on"): return None
+        if len(self.extra) >= G.MAX: return None
+        x = G.make(ev, len(self.extra))
+        if any(e["id"] == x["id"] for e in self.extra): return None
+        self.extra.append(x); self.set_calib(self.calib)
+        if self.on_new_control: self.on_new_control(x)
+        return next((c for c in self.controls if c["id"] == x["id"]), None)
+
     def on_event(self, ev):
-        c = self.find(ev)
+        c = self.find(ev) or self.learn_new(ev)
         if not c: return None
         self.lit[c["id"]] = time.monotonic(); self.seen.add(c["id"])
         if ev["type"] == "note":
@@ -116,19 +168,25 @@ class DeviceView(QWidget):
 
     # --- геометрия
     def _xf(self):
-        s = min(self.width() / W, self.height() / H)
-        return s, (self.width() - W * s) / 2, (self.height() - H * s) / 2
+        s = min(self.width() / self.W, self.height() / self.H)
+        return s, (self.width() - self.W * s) / 2, (self.height() - self.H * s) / 2
+
+    def _bank_rect(self):
+        b = self.prof.get("banks")
+        if not b: return None
+        x, y, w, h = b["rect"]; return QRectF(x, y - 2, w, h + 2)
 
     def _hit(self, pos):
         s, ox, oy = self._xf(); p = QPointF((pos.x() - ox) / s, (pos.y() - oy) / s)
         for c in [c for c in self.controls if c["kind"] == "black"] + [c for c in self.controls if c["kind"] != "black"]:
             if c["rect"].contains(p): return c
-        if QRectF(760, 8, 150, 30).contains(p): return "bank"
+        br = self._bank_rect()
+        if br and br.contains(p): return "bank"
         return None
 
     def mousePressEvent(self, e):
         h = self._hit(e.position())
-        if h == "bank": self.set_bank(1 - self.bank)
+        if h == "bank": self.set_bank(self.bank + 1)
         elif h: self.sel = h; self.update(); self.selected.emit(h)
 
     def mouseMoveEvent(self, e):
@@ -144,23 +202,34 @@ class DeviceView(QWidget):
     def paintEvent(self, _):
         p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
         s, ox, oy = self._xf(); p.translate(ox, oy); p.scale(s, s)
+        W, H = self.W, self.H
         g = QLinearGradient(0, 0, 0, H); g.setColorAt(0, col("#2a2826")); g.setColorAt(1, col("#1f1e1c"))
         p.setPen(QPen(col("#3a3733"), 1.5)); p.setBrush(g); p.drawRoundedRect(QRectF(4, 4, W - 8, H - 8), 22, 22)
-        p.setFont(QFont("Inter", 11, QFont.DemiBold)); p.setPen(col("#d8d3cc")); p.drawText(QRectF(30, 18, 300, 30), Qt.AlignVCenter, "ARTURIA  MiniLab 3")
-        # банк
-        br = QRectF(760, 10, 150, 28); p.setPen(QPen(col("#4a4640"))); p.setBrush(col("#171615")); p.drawRoundedRect(br, 14, 14)
-        for i, t in enumerate("AB"):
-            r = QRectF(762 + i * 74, 12, 72, 24)
-            if i == self.bank: p.setPen(Qt.NoPen); p.setBrush(col("#ff8a2a")); p.drawRoundedRect(r, 12, 12)
-            p.setPen(col("#111" if i == self.bank else "#bdb6ad")); p.setFont(QFont("Inter", 10, QFont.DemiBold))
-            p.drawText(r, Qt.AlignCenter, f"Пэды {t}")
+        p.setFont(QFont("Inter", 11, QFont.DemiBold)); p.setPen(col("#d8d3cc")); p.drawText(QRectF(30, 18, 600, 30), Qt.AlignVCenter, self.prof["title"])
+        # банк / слой
+        bk = self.prof.get("banks")
+        if bk:
+            x, y, w, h = bk["rect"]; n = len(bk["names"]); step = (w - 2) / n
+            br = QRectF(x, y, w, h); p.setPen(QPen(col("#4a4640"))); p.setBrush(col("#171615")); p.drawRoundedRect(br, 14, 14)
+            for i, t in enumerate(bk["names"]):
+                r = QRectF(x + 2 + i * step, y + 2, step - 2, h - 4)
+                if i == self.bank: p.setPen(Qt.NoPen); p.setBrush(col("#ff8a2a")); p.drawRoundedRect(r, 12, 12)
+                p.setPen(col("#111" if i == self.bank else "#bdb6ad")); p.setFont(QFont("Inter", 10, QFont.DemiBold))
+                p.drawText(r, Qt.AlignCenter, f"{bk['label']} {t}")
         # экран
-        p.setPen(QPen(col("#3c3934"))); p.setBrush(col("#0e0e0d")); p.drawRoundedRect(QRectF(118, 60, 170, 64), 8, 8)
-        p.setPen(col("#ffb071")); p.setFont(QFont("Inter", 10)); p.drawText(QRectF(126, 66, 160, 52), Qt.AlignCenter, self.screen_text if hasattr(self, "screen_text") else "")
+        sc = self.prof.get("screen")
+        if sc:
+            x, y, w, h = sc
+            p.setPen(QPen(col("#3c3934"))); p.setBrush(col("#0e0e0d")); p.drawRoundedRect(QRectF(x, y, w, h), 8, 8)
+            p.setPen(col("#ffb071")); p.setFont(QFont("Inter", 10)); p.drawText(QRectF(x + 8, y + 6, w - 10, h - 12), Qt.AlignCenter, self.screen_text if hasattr(self, "screen_text") else "")
+        if self.prof.get("dynamic") and not self.controls:
+            p.setPen(col("#8d867c")); p.setFont(QFont("Inter", 13))
+            p.drawText(QRectF(0, 0, W, H), Qt.AlignCenter, "Пошевелите любую ручку, нажмите кнопку или клавишу —\nконтрол появится на схеме, и ему можно назначить действие")
         for c in self.controls: self._draw(p, c)
         if getattr(self, "dimmed", False):
             p.setPen(Qt.NoPen); p.setBrush(overlay()); p.drawRoundedRect(QRectF(4, 4, W - 8, H - 8), 22, 22)
-            p.setPen(col("#d8d3cc")); p.setFont(QFont("Inter", 20, QFont.Bold)); p.drawText(QRectF(0, 0, W, H), Qt.AlignCenter, "МАКРОСЫ ВЫКЛЮЧЕНЫ\nклавиатура свободна для FL Studio")
+            what = "клавиатура свободна" if any(c["kind"] == "white" for c in self.controls) else "устройство свободно"
+            p.setPen(col("#d8d3cc")); p.setFont(QFont("Inter", 20, QFont.Bold)); p.drawText(QRectF(0, 0, W, H), Qt.AlignCenter, f"МАКРОСЫ ВЫКЛЮЧЕНЫ\n{what} для FL Studio")
         p.end()
 
     def _frame(self, p, c, r, radius):
@@ -174,10 +243,20 @@ class DeviceView(QWidget):
         if grey: p.setOpacity(0.38)
         self._draw1(p, c)
         p.setOpacity(1.0)
+        self._badge(p, c)
         if self.calib_target == c["id"]:
             ph = (time.monotonic() * 2) % 1.0
             p.setBrush(Qt.NoBrush); p.setPen(QPen(col("#ff8a2a"), 3 + 2 * ph))
             p.drawRoundedRect(c["rect"].adjusted(-8 - 4 * ph, -8 - 4 * ph, 8 + 4 * ph, 8 + 4 * ph), 12, 12)
+
+    def _badge(self, p, c):
+        """«?» — номер не подтверждён документацией (или неизвестен): пропадает после движения контрола или калибровки."""
+        if c["kind"] in ("white", "black") or c.get("verify", "official") in D.VERIFIED: return
+        if c["id"] in self.seen or c["id"] in self.calib: return
+        r = c["rect"]; unknown = self.trig(c) is None
+        d = QRectF(r.x() - 6, r.y() - 6, 14, 14)
+        p.setPen(Qt.NoPen); p.setBrush(col("#ff5a4a") if unknown else col("#6b655d")); p.drawEllipse(d)
+        p.setPen(col("#111")); p.setFont(QFont("Inter", 7, QFont.Bold)); p.drawText(d, Qt.AlignCenter, "?")
 
     def _draw1(self, p, c):
         r = c["rect"]; k = c["kind"]
@@ -195,7 +274,7 @@ class DeviceView(QWidget):
             base = blend(base, col("#ff8a2a"), gl * 0.9)
             p.setBrush(base); p.drawRoundedRect(r, 9, 9)
             p.setPen(col("#111" if gl > .5 else "#cfc8be")); p.setFont(QFont("Inter", 10, QFont.DemiBold))
-            p.drawText(r, Qt.AlignCenter, self.label(c).replace("Пэд ", ""))
+            p.drawText(r, Qt.AlignCenter, c["short"] if "short" in c else self.label(c).replace("Пэд ", ""))
         elif k in ("knob", "encoder"):
             p.setBrush(blend(col("#2f2c29"), col("#ff8a2a"), gl * .5)); p.drawEllipse(r)
             p.setPen(Qt.NoPen); p.setBrush(col("#1a1918")); p.drawEllipse(r.adjusted(7, 7, -7, -7))
@@ -205,7 +284,7 @@ class DeviceView(QWidget):
             p.setPen(QPen(col("#ff8a2a") if (gl or k == "knob") else col("#cfc8be"), 3, Qt.SolidLine, Qt.RoundCap))
             p.drawLine(QPointF(cx, cy), QPointF(cx + rad * math.cos(ang), cy - rad * math.sin(ang)))
             p.setPen(col("#a39b90")); p.setFont(QFont("Inter", 8))
-            p.drawText(QRectF(r.x() - 20, r.bottom() + 1, r.width() + 40, 16), Qt.AlignCenter, c["label"].replace("Ручка ", "") if k == "knob" else "")
+            p.drawText(QRectF(r.x() - 20, r.bottom() + 1, r.width() + 40, 16), Qt.AlignCenter, (c.get("short") or c["label"].replace("Ручка ", "")) if k == "knob" else c.get("short", ""))
         elif k == "fader":
             p.setBrush(col("#151413")); p.drawRoundedRect(QRectF(r.center().x() - 4, r.y(), 8, r.height()), 4, 4)
             v = self.values.get(c["id"], 0.0); y = r.bottom() - 14 - v * (r.height() - 28)
@@ -217,10 +296,10 @@ class DeviceView(QWidget):
             if c["id"] in self.values:
                 v = self.values[c["id"]]; y = r.bottom() - 6 - v * (r.height() - 12)
                 p.setPen(Qt.NoPen); p.setBrush(col("#ff8a2a")); p.drawRoundedRect(QRectF(r.x() + 4, y - 3, r.width() - 8, 6), 3, 3)
-            p.setPen(col("#8d867c")); p.setFont(QFont("Inter", 7)); p.drawText(QRectF(r.x() - 10, r.bottom() + 2, r.width() + 20, 14), Qt.AlignCenter, "Pitch" if c["id"] == "pitch" else "Mod")
+            p.setPen(col("#8d867c")); p.setFont(QFont("Inter", 7)); p.drawText(QRectF(r.x() - 10, r.bottom() + 2, r.width() + 20, 14), Qt.AlignCenter, c.get("short") or ("Pitch" if c["id"] == "pitch" else "Mod"))
         elif k == "button":
             p.setBrush(blend(col("#34312d"), col("#ff8a2a"), gl)); p.drawRoundedRect(r, 6, 6)
-            p.setPen(col("#cfc8be")); p.setFont(QFont("Inter", 7)); p.drawText(r, Qt.AlignCenter, "Клик")
+            p.setPen(col("#cfc8be")); p.setFont(QFont("Inter", 7 if r.height() < 28 else 9)); p.drawText(r, Qt.AlignCenter, c.get("short", "Клик"))
         elif k == "white":
             p.setBrush(blend(col("#ece8e1"), col("#ffb36b"), gl)); p.drawRoundedRect(r, 4, 4)
         elif k == "black":
